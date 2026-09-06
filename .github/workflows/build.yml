@@ -1,0 +1,23 @@
+name: Windows build
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v2
+      - name: Restore
+        run: nuget restore A2ZSysIns.sln
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+      - name: Build
+        run: msbuild A2ZSysIns.sln /p:Configuration=Release /p:Platform=x64 /m
+      - name: Upload application
+        uses: actions/upload-artifact@v4
+        with:
+          name: A2Z-System-Inspector-Windows-x64
+          path: src/A2ZSysIns/bin/x64/Release/**
