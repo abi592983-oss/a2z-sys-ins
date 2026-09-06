@@ -39,7 +39,7 @@ namespace A2ZSysIns
         private static void CollectMemoryModules(InspectionReport report)
         {
             var rows = Query("Win32_PhysicalMemory", "Capacity", "Speed", "Manufacturer", "PartNumber");
-            report.System["Memory modules"] = rows.Count == 0 ? "N/A" : string.Join("; ", rows.Select((r, i) => "Slot " + (i + 1) + ": " + FormatBytes(ToLong(r["Capacity"])) + " @ " + Val(r, "Speed") + " MHz " + Val(r, "Manufacturer") + " " + Val(r, "PartNumber")));
+            report.System["Memory modules"] = rows.Count == 0 ? "N/A" : string.Join("; ", rows.Select((r, i) => "Slot " + (i + 1) + ": " + FormatBytes(ToLong(Val(r, "Capacity"))) + " @ " + Val(r, "Speed") + " MHz " + Val(r, "Manufacturer") + " " + Val(r, "PartNumber")));
         }
 
         private static void CollectVolumes(InspectionReport report)
