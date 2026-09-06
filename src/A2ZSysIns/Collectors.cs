@@ -123,12 +123,12 @@ namespace A2ZSysIns
 
         public static void CollectSensors(InspectionReport report, Action<string> status)
         {
-            var dll = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "LibreHardwareMonitorLib.dll");
-            if (!File.Exists(dll)) { report.Limitations.Add("LibreHardwareMonitorLib.dll was not found; live temperatures are N/A."); return; }
             object computer = null;
             try
             {
-                var asm = Assembly.LoadFrom(dll); var type = asm.GetType("LibreHardwareMonitor.Hardware.Computer", true); computer = Activator.CreateInstance(type);
+                // LibreHardwareMonitorLib is restored and shipped automatically with the app.
+                // Load by assembly name so the collector does not depend on a user-selected path.
+                var asm = Assembly.Load("LibreHardwareMonitorLib"); var type = asm.GetType("LibreHardwareMonitor.Hardware.Computer", true); computer = Activator.CreateInstance(type);
                 foreach (var p in new[] { "IsCpuEnabled", "IsGpuEnabled", "IsMemoryEnabled", "IsMotherboardEnabled", "IsStorageEnabled", "IsControllerEnabled" }) type.GetProperty(p)?.SetValue(computer, true, null);
                 type.GetMethod("Open").Invoke(computer, null);
                 var values = new Dictionary<string, SensorRecord>();
@@ -140,7 +140,7 @@ namespace A2ZSysIns
                 }
                 report.Sensors.AddRange(values.Values.OrderBy(x => x.Hardware).ThenBy(x => x.Type).ThenBy(x => x.Name));
             }
-            catch (Exception ex) { report.Limitations.Add("Sensor collection failed: " + ex.GetBaseException().Message); }
+            catch (Exception ex) { report.Limitations.Add("Bundled sensor collector failed: " + ex.GetBaseException().Message + ". Run as administrator and confirm this hardware exposes supported sensors."); }
             finally { try { if (computer != null) computer.GetType().GetMethod("Close").Invoke(computer, null); } catch { } }
         }
 
