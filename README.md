@@ -6,7 +6,7 @@ Windows-first, offline, read-only PC health inspection and printable reporting t
 
 - Windows, hardware, RAM, graphics, volume and device information
 - Physical storage inventory with optional `smartctl` JSON evidence
-- Optional live temperature, load, fan, clock and voltage readings through LibreHardwareMonitorLib
+- Bundled live temperature, load, fan, clock and voltage readings through LibreHardwareMonitorLib
 - 30-day summary of important Kernel-Power, BugCheck, WHEA, Disk and NTFS events
 - Basic battery and Device Manager condition
 - Versioned 0–100 category scores, critical storage cap and N/A handling
@@ -34,14 +34,13 @@ Or from a Visual Studio Developer PowerShell:
 msbuild A2ZSysIns.sln /restore /p:Configuration=Release /p:Platform=x64
 ```
 
-## Optional diagnostic adapters
+## Diagnostic adapters
 
-The program works without these files and marks affected readings as N/A.
+LibreHardwareMonitorLib is restored during the build and included automatically in the downloadable application artifact. The technician does not need to download or copy the sensor library. Administrator access may still be required for low-level sensor access.
 
-- Place `LibreHardwareMonitorLib.dll` beside the application executable to enable sensors.
-- Place the official `smartctl.exe` and its required runtime files under a `tools` directory beside the executable to enable full SMART evidence.
+Full SMART evidence remains optional in this version. Place the official `smartctl.exe` and its required runtime files under a `tools` directory beside the executable to enable it.
 
-Third-party binaries are intentionally not committed. Review and comply with their licences before redistributing them. Run the app as administrator when complete hardware and Event Log access is required.
+Review and comply with third-party licences when redistributing the application. Run the app as administrator when complete sensor and Event Log access is required.
 
 ## Safety boundary
 
