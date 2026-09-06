@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Management;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using System.Threading;
 
 namespace A2ZSysIns
@@ -102,23 +103,77 @@ namespace A2ZSysIns
 
         public static void CollectEvents(InspectionReport report)
         {
-            var definitions = new[] { Tuple.Create("Kernel-Power", 41, "Unexpected shutdown"), Tuple.Create("BugCheck", 1001, "Windows bug check / BSOD"), Tuple.Create("WHEA-Logger", 18, "Hardware error"), Tuple.Create("Disk", 7, "Disk read/write error"), Tuple.Create("Ntfs", 55, "NTFS file-system error") };
+            var definitions = new[]
+            {
+                Tuple.Create("Microsoft-Windows-Kernel-Power", 41, "Unexpected shutdown"),
+                Tuple.Create("Microsoft-Windows-WER-SystemErrorReporting", 1001, "Windows bug check / BSOD"),
+                Tuple.Create("Microsoft-Windows-WHEA-Logger", 18, "Hardware error"),
+                Tuple.Create("Disk", 7, "Disk read/write error"),
+                Tuple.Create("Ntfs", 55, "NTFS file-system error")
+            };
             var start = DateTime.Now.AddDays(-30).ToUniversalTime().ToString("o");
             foreach (var d in definitions)
             {
                 try
                 {
-                    var query = "*[System[(EventID=" + d.Item2 + ") and TimeCreated[@SystemTime >= '" + start + "']]]";
+                    var query = "*[System[Provider[@Name='" + d.Item1 + "'] and (EventID=" + d.Item2 + ") and TimeCreated[@SystemTime >= '" + start + "']]]";
                     var count = 0; DateTime? latest = null;
                     using (var reader = new EventLogReader(new EventLogQuery("System", PathType.LogName, query)))
                     {
                         EventRecord ev;
                         while (count < 500 && (ev = reader.ReadEvent()) != null) { using (ev) { count++; if (!latest.HasValue || ev.TimeCreated > latest) latest = ev.TimeCreated; } }
                     }
-                    if (count > 0) report.Events.Add(new EventFinding { Source = d.Item1, EventId = d.Item2, Level = d.Item1 == "Kernel-Power" ? "Warning" : "Error", Count = count, Latest = latest, Summary = d.Item3 });
+                    if (count > 0) report.Events.Add(new EventFinding { Source = d.Item1, EventId = d.Item2, Level = d.Item2 == 41 ? "Warning" : "Error", Count = count, Latest = latest, Summary = d.Item3, Signature = d.Item1 + ":" + d.Item2 });
                 }
                 catch { report.Limitations.Add("Could not read Event ID " + d.Item2 + ". Try running as administrator."); }
             }
+            CollectApplicationCrashes(report, start);
+        }
+
+        private static void CollectApplicationCrashes(InspectionReport report, string start)
+        {
+            try
+            {
+                var query = "*[System[Provider[@Name='Application Error'] and (EventID=1000) and TimeCreated[@SystemTime >= '" + start + "']]]";
+                var crashes = new Dictionary<string, EventFinding>(StringComparer.OrdinalIgnoreCase);
+                using (var reader = new EventLogReader(new EventLogQuery("Application", PathType.LogName, query)))
+                {
+                    EventRecord ev;
+                    while ((ev = reader.ReadEvent()) != null)
+                    {
+                        using (ev)
+                        {
+                            var description = SafeDescription(ev);
+                            var app = ExtractApplicationName(description);
+                            var signature = "Application Error:1000:" + app;
+                            if (!crashes.TryGetValue(signature, out var item))
+                            {
+                                item = new EventFinding { Source = "Application Error", EventId = 1000, Level = "Error", Summary = "Application crash: " + app, Signature = signature };
+                                crashes[signature] = item;
+                            }
+                            item.Count++;
+                            if (!item.Latest.HasValue || ev.TimeCreated > item.Latest) item.Latest = ev.TimeCreated;
+                        }
+                    }
+                }
+                report.Events.AddRange(crashes.Values.Where(x => x.Count > 0).OrderByDescending(x => x.Count));
+            }
+            catch { report.Limitations.Add("Could not inspect application-crash history. Try running as administrator."); }
+        }
+
+        private static string SafeDescription(EventRecord ev)
+        {
+            try { return ev.FormatDescription() ?? ""; }
+            catch { return string.Join(" | ", ev.Properties.Select(x => Convert.ToString(x.Value))); }
+        }
+
+        private static string ExtractApplicationName(string description)
+        {
+            if (string.IsNullOrWhiteSpace(description)) return "Unknown application";
+            var match = Regex.Match(description, @"Faulting application name:\s*([^,\r\n]+)", RegexOptions.IgnoreCase);
+            if (match.Success) return match.Groups[1].Value.Trim();
+            var first = description.Split(new[] { '\r', '\n', ',' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+            return string.IsNullOrWhiteSpace(first) ? "Unknown application" : first.Trim().Substring(0, Math.Min(first.Trim().Length, 80));
         }
 
         public static void CollectSensors(InspectionReport report, Action<string> status)
