@@ -14,7 +14,7 @@ namespace A2ZSysIns
     {
         public static FlowDocument Build(InspectionReport r)
         {
-            var d = new FlowDocument { PagePadding = new Thickness(55), FontFamily = new FontFamily("Segoe UI"), FontSize = 11, ColumnGap = 0, ColumnWidth = double.PositiveInfinity };
+            var d = new FlowDocument { PagePadding = new Thickness(55), FontFamily = new FontFamily("Segoe UI"), FontSize = 11, Foreground = new SolidColorBrush(Color.FromRgb(23, 43, 77)), Background = Brushes.White, ColumnGap = 0, ColumnWidth = double.PositiveInfinity };
             d.Blocks.Add(new Paragraph(new Run("A2Z SYSTEM INSPECTOR")) { FontSize = 23, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Color.FromRgb(16, 42, 67)), Margin = new Thickness(0, 0, 0, 2) });
             d.Blocks.Add(new Paragraph(new Run("Computer Health Inspection Report")) { FontSize = 14, Foreground = Brushes.DimGray, Margin = new Thickness(0, 0, 0, 18) });
             d.Blocks.Add(Heading("Inspection summary"));
