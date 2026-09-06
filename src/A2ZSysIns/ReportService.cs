@@ -28,7 +28,7 @@ namespace A2ZSysIns
             d.Blocks.Add(Heading("Physical storage")); var drives = NewTable("Model", "Serial", "Interface", "Capacity", "Status"); foreach (var x in r.Drives) Row(drives, x.Model, x.Serial, x.Interface, Collectors.FormatBytes(x.SizeBytes), x.SmartStatus); d.Blocks.Add(drives);
             d.Blocks.Add(Heading("Live sensors")); var sensors = NewTable("Hardware", "Sensor", "Current", "Minimum", "Maximum"); foreach (var x in r.Sensors) Row(sensors, x.Hardware, x.Name, Num(x.Current, x.Unit), Num(x.Minimum, x.Unit), Num(x.Maximum, x.Unit)); d.Blocks.Add(sensors);
             d.Blocks.Add(Heading("Inspection limitations")); foreach (var x in r.Limitations) d.Blocks.Add(new Paragraph(new Run("• " + x)) { Margin = new Thickness(8, 2, 0, 2) });
-            d.Blocks.Add(Heading("Technician notes")); d.Blocks.Add(new Paragraph(new Run(Empty(r.TechnicianNotes))) { MinHeight = 50 });
+            d.Blocks.Add(Heading("Technician notes")); d.Blocks.Add(new Paragraph(new Run(Empty(r.TechnicianNotes) + "\n\n")));
             d.Blocks.Add(new Paragraph(new Run("This is a read-only screening report, not a guarantee of future reliability. No repairs or modifications were performed by A2Z System Inspector.")) { FontSize = 9, Foreground = Brushes.DimGray, Margin = new Thickness(0, 20, 0, 0) });
             return d;
         }
