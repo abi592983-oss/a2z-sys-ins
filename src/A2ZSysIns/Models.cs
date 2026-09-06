@@ -55,6 +55,7 @@ namespace A2ZSysIns
         [DataMember] public int Count;
         [DataMember] public DateTime? Latest;
         [DataMember] public string Summary;
+        [DataMember] public string Signature;
     }
     [DataContract] public sealed class Finding
     {
@@ -67,9 +68,9 @@ namespace A2ZSysIns
     }
     [DataContract] public sealed class CategoryScore
     {
-        [DataMember] public string Category;
-        [DataMember] public int? Score;
-        [DataMember] public string Status;
-        [DataMember] public string Reason;
+        [DataMember] public string Category { get; set; }
+        [DataMember] public int? Score { get; set; }
+        [DataMember] public string Status { get; set; }
+        [DataMember] public string Reason { get; set; }
     }
 }
