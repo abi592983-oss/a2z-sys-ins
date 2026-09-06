@@ -1,0 +1,9 @@
+.vs/
+bin/
+obj/
+*.user
+*.suo
+packages/
+dist/
+src/A2ZSysIns/tools/*.exe
+src/A2ZSysIns/LibreHardwareMonitorLib.dll
