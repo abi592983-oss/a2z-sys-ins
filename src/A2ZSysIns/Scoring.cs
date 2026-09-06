@@ -34,9 +34,18 @@ namespace A2ZSysIns
         }
         private static void ScoreEvents(InspectionReport r)
         {
-            var critical = r.Events.Where(x => x.Source == "WHEA-Logger" || x.Source == "Disk" || x.Source == "Ntfs" || x.Source == "BugCheck").Sum(x => x.Count); var shutdowns = r.Events.Where(x => x.Source == "Kernel-Power").Sum(x => x.Count);
-            var score = Math.Max(20, 100 - critical * 15 - Math.Min(shutdowns, 10) * 3); Add(r, "Windows stability", score, critical + " critical hardware/storage events; " + shutdowns + " unexpected shutdown events in 30 days");
-            foreach (var e in r.Events) r.Findings.Add(F(e.Level == "Error" ? "Warning" : "Attention", "Windows stability", e.Summary, e.Count + " event(s) found in the last 30 days.", "Review the event evidence and investigate if it matches the reported symptom.", e.Source + " Event ID " + e.EventId));
+            var critical = r.Events.Where(x => x.EventId != 41).Sum(x => x.Count); var shutdowns = r.Events.Where(x => x.EventId == 41).Sum(x => x.Count);
+            var score = Math.Max(20, 100 - critical * 15 - Math.Min(shutdowns, 10) * 3); Add(r, "Windows stability", score, critical + " critical error events; " + shutdowns + " unexpected shutdown events in 30 days");
+            foreach (var e in r.Events)
+            {
+                var repeated = e.Count > 2;
+                var title = repeated ? "Repeated pattern: " + e.Summary : e.Summary;
+                var explanation = e.Count + " event(s) found in the last 30 days." + (repeated ? " This exceeds the repeated-event threshold of two occurrences and indicates a recurring pattern." : "");
+                var recommendation = e.Source == "Application Error"
+                    ? "Review, repair, update, or remove the named application only after customer approval."
+                    : "Review the event evidence and investigate whether it matches the reported symptom.";
+                r.Findings.Add(F(repeated && e.Level == "Error" ? "Warning" : e.Level == "Error" ? "Attention" : "Attention", "Windows stability", title, explanation, recommendation, e.Source + " Event ID " + e.EventId + "; signature " + e.Signature));
+            }
         }
         private static void ScoreResources(InspectionReport r)
         {
