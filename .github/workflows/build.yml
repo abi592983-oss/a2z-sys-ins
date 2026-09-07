@@ -21,8 +21,8 @@ jobs:
         run: |
           $installer = Join-Path $env:RUNNER_TEMP "smartmontools-7.5.win32-setup.exe"
           $smartRoot = Join-Path $env:RUNNER_TEMP "a2z-smartmontools"
-          $binaryUrl = "https://downloads.sourceforge.net/project/smartmontools/smartmontools/7.5/smartmontools-7.5.win32-setup.exe"
-          $sourceUrl = "https://downloads.sourceforge.net/project/smartmontools/smartmontools/7.5/smartmontools-7.5.tar.gz"
+          $binaryUrl = "https://github.com/smartmontools/smartmontools/releases/download/RELEASE_7_5/smartmontools-7.5.win32-setup.exe"
+          $sourceUrl = "https://github.com/smartmontools/smartmontools/releases/download/RELEASE_7_5/smartmontools-7.5.tar.gz"
           Invoke-WebRequest -Uri $binaryUrl -OutFile $installer
           $header = Get-Content -Path $installer -AsByteStream -TotalCount 2
           if ($header[0] -ne 0x4d -or $header[1] -ne 0x5a) { throw "Official mirror did not return a Windows executable." }
