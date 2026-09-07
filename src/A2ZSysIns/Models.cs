@@ -7,13 +7,16 @@ namespace A2ZSysIns
     [DataContract]
     public sealed class InspectionReport
     {
-        [DataMember] public string SchemaVersion = "2.0";
-        [DataMember] public string RuleSetVersion = "2.0-evidence-only";
+        [DataMember] public string SchemaVersion = "2.1";
+        [DataMember] public string RuleSetVersion = "2.1-evidence-only";
         [DataMember] public List<Measurement> Measurements = new List<Measurement>();
         [DataMember] public List<LogEntry> DiagnosticLog = new List<LogEntry>();
         [DataMember] public List<VolumeRecord> Volumes = new List<VolumeRecord>();
         [DataMember] public double? MemoryUsedPercent;
         [DataMember] public bool IsAdministrator;
+        [DataMember] public double? BatteryDesignedCapacity;
+        [DataMember] public double? BatteryFullChargeCapacity;
+        [DataMember] public double? BatteryWearPercent;
         [DataMember] public string InspectionId;
         [DataMember] public DateTime StartedAt;
         [DataMember] public DateTime CompletedAt;
