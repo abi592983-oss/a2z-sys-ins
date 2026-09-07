@@ -85,7 +85,7 @@ namespace A2ZSysIns
         {
             using (var identity = WindowsIdentity.GetCurrent())
                 r.IsAdministrator = new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
-            Log(r, "Session started", "App 2.1; rules " + r.RuleSetVersion + "; administrator=" + r.IsAdministrator);
+            Log(r, "Session started", "App 2.2; rules " + r.RuleSetVersion + "; administrator=" + r.IsAdministrator);
             if (!r.IsAdministrator) r.Limitations.Add("Not elevated: some hardware readings may be unavailable. Security protections are not disabled.");
         }
 
