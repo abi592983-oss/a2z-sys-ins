@@ -16,7 +16,8 @@ Produce an offline, read-only, evidence-based health screening report for one Wi
 8. Show plain-language evidence assessments, findings, recommendations and limitations; withhold an overall percentage until a validated model exists.
 9. Preview, print and export the report locally without an Internet connection.
 10. Export a timestamped diagnostic log of application collector actions, raw responses, fallback attempts, errors and assessment decisions.
-11. Perform no repair, cleanup, update, deletion, optimization or configuration change.
+11. Offer an optional technician-started CPU stress test that never runs automatically, ramps load, supports cancellation, requires real CPU temperature monitoring and aborts at 90°C or if monitoring is lost.
+12. Perform no repair, cleanup, update, deletion, optimization or configuration change.
 
 ## Version 2 exclusions
 
@@ -24,7 +25,7 @@ Produce an offline, read-only, evidence-based health screening report for one Wi
 - Accounts and authentication
 - Cloud sync or remote monitoring
 - Linux or WinPE collectors
-- Automated stress, SMART self-test or memory test
+- Automatic stress, SMART self-test or memory test
 - Automatic repairs or recommendations presented as confirmed diagnoses
 - Background service or scheduled scanning
 - User-activity recording, keylogging or recording actions outside System Inspector
