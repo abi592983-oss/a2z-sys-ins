@@ -7,8 +7,13 @@ namespace A2ZSysIns
     [DataContract]
     public sealed class InspectionReport
     {
-        [DataMember] public string SchemaVersion = "1.0";
-        [DataMember] public string RuleSetVersion = "1.0";
+        [DataMember] public string SchemaVersion = "2.0";
+        [DataMember] public string RuleSetVersion = "2.0-evidence-only";
+        [DataMember] public List<Measurement> Measurements = new List<Measurement>();
+        [DataMember] public List<LogEntry> DiagnosticLog = new List<LogEntry>();
+        [DataMember] public List<VolumeRecord> Volumes = new List<VolumeRecord>();
+        [DataMember] public double? MemoryUsedPercent;
+        [DataMember] public bool IsAdministrator;
         [DataMember] public string InspectionId;
         [DataMember] public DateTime StartedAt;
         [DataMember] public DateTime CompletedAt;
@@ -36,6 +41,13 @@ namespace A2ZSysIns
         [DataMember] public long SizeBytes;
         [DataMember] public string SmartStatus;
         [DataMember] public string RawEvidence;
+        [DataMember] public string DeviceId;
+        [DataMember] public string PnpId;
+        [DataMember] public bool? SmartPassed;
+        [DataMember] public double? RemainingLifePercent;
+        [DataMember] public string LifeMeaning = "Not measured; no validated life attribute";
+        [DataMember] public string Assessment = "Not assessed";
+        [DataMember] public Dictionary<string, long> Attributes = new Dictionary<string, long>();
     }
     [DataContract] public sealed class SensorRecord
     {
@@ -56,6 +68,8 @@ namespace A2ZSysIns
         [DataMember] public DateTime? Latest;
         [DataMember] public string Summary;
         [DataMember] public string Signature;
+        [DataMember] public string Cause;
+        [DataMember] public List<string> RawEvents = new List<string>();
     }
     [DataContract] public sealed class Finding
     {
@@ -72,5 +86,25 @@ namespace A2ZSysIns
         [DataMember] public int? Score { get; set; }
         [DataMember] public string Status { get; set; }
         [DataMember] public string Reason { get; set; }
+    }
+    [DataContract] public sealed class Measurement
+    {
+        [DataMember] public string Target;
+        [DataMember] public string Source;
+        [DataMember] public string Status;
+        [DataMember] public string Reason;
+        [DataMember] public string Response;
+    }
+    [DataContract] public sealed class LogEntry
+    {
+        [DataMember] public DateTime AtUtc;
+        [DataMember] public string Action;
+        [DataMember] public string Response;
+    }
+    [DataContract] public sealed class VolumeRecord
+    {
+        [DataMember] public string Name;
+        [DataMember] public long TotalBytes;
+        [DataMember] public long FreeBytes;
     }
 }
