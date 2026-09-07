@@ -105,7 +105,7 @@ namespace A2ZSysIns
                 {
                     var exe = FindSmartCtl();
                     if (exe == null) throw new FileNotFoundException("Bundled smartctl.exe is missing from the application package.");
-                    var raw = RunSmartForDrive(r, exe, d.DeviceId);
+                    var raw = RunSmartForDrive(r, exe, d);
                     d.RawEvidence = raw;
                     ParseSmart(d, JObject.Parse(raw));
                     if (d.SmartPassed == null && d.Attributes.Count == 0 && d.RemainingLifePercent == null)
@@ -138,24 +138,47 @@ namespace A2ZSysIns
             }.FirstOrDefault(File.Exists);
         }
 
-        private static string RunSmartForDrive(InspectionReport r, string exe, string deviceId)
+        private static string RunSmartForDrive(InspectionReport r, string exe, DriveInfoRecord drive)
         {
-            var candidates = new List<string> { deviceId };
-            var digits = new string((deviceId ?? "").Reverse().TakeWhile(char.IsDigit).Reverse().ToArray());
+            var candidates = new List<string> { drive.DeviceId };
+            var digits = new string((drive.DeviceId ?? "").Reverse().TakeWhile(char.IsDigit).Reverse().ToArray());
             if (digits.Length > 0) candidates.Add("/dev/pd" + digits);
+            try
+            {
+                var scan = JObject.Parse(Run(r, exe, "--scan-open -j"));
+                foreach (var device in scan["devices"] as JArray ?? new JArray())
+                {
+                    var name = (string)device["name"];
+                    if (!string.IsNullOrWhiteSpace(name)) candidates.Add(name);
+                }
+            }
+            catch (Exception ex) { Log(r, "smartctl scan fallback failed", ex.GetBaseException().Message); }
             Exception last = null;
             foreach (var candidate in candidates.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase))
             {
-                try
+                foreach (var type in new[] { "", " -d ata", " -d sat" })
                 {
-                    var raw = Run(r, exe, "-a -j \"" + candidate + "\"");
-                    JObject.Parse(raw);
-                    return raw;
-                }
-                catch (Exception ex)
-                {
-                    last = ex;
-                    Log(r, "smartctl device-path attempt failed", candidate + ": " + ex.GetBaseException().Message);
+                    try
+                    {
+                        var raw = Run(r, exe, "-a -j" + type + " \"" + candidate + "\"");
+                        var parsed = JObject.Parse(raw);
+                        var useful = parsed.SelectToken("smart_status.passed") != null
+                            || parsed.SelectToken("ata_smart_attributes.table") != null
+                            || parsed["nvme_smart_health_information_log"] != null
+                            || parsed["scsi_grown_defect_list"] != null;
+                        if (!useful) throw new InvalidOperationException("No SMART health fields returned.");
+                        var returnedSerial = ((string)parsed["serial_number"] ?? "").Trim();
+                        if (!string.IsNullOrWhiteSpace(drive.Serial) && !string.IsNullOrWhiteSpace(returnedSerial)
+                            && !string.Equals(drive.Serial.Trim(), returnedSerial, StringComparison.OrdinalIgnoreCase))
+                            throw new InvalidOperationException("Returned serial number belongs to a different drive; result rejected.");
+                        Log(r, "smartctl device path selected", candidate + (type == "" ? " (automatic type)" : type));
+                        return raw;
+                    }
+                    catch (Exception ex)
+                    {
+                        last = ex;
+                        Log(r, "smartctl device-path attempt failed", candidate + (type == "" ? "" : type) + ": " + ex.GetBaseException().Message);
+                    }
                 }
             }
             throw last ?? new InvalidOperationException("No usable smartctl device path.");
@@ -395,15 +418,25 @@ namespace A2ZSysIns
             var system = doc.Element(ns + "System");
             var provider = (string)system.Element(ns + "Provider").Attribute("Name");
             var id = (int)system.Element(ns + "EventID");
-            var data = doc.Descendants(ns + "Data").Where(x => x.Attribute("Name") != null)
+            var allData = doc.Descendants(ns + "Data").ToList();
+            var data = allData.Where(x => x.Attribute("Name") != null)
                 .GroupBy(x => (string)x.Attribute("Name")).ToDictionary(x => x.Key, x => x.First().Value);
             string Get(string k) => data.TryGetValue(k, out var v) ? v : "";
-            var detail = id == 1000 ? Get("AppName") + "|" + Get("ModuleName") + "|" + Get("ExceptionCode") :
-                id == 1001 ? Get("param1") : id == 41 ? Get("BugcheckCode") + "|" + Get("PowerButtonTimestamp") :
+            string Pos(int index) => index >= 0 && index < allData.Count ? allData[index].Value : "";
+            var appName = Get("AppName"); if (id == 1000 && appName == "") appName = Pos(0);
+            var moduleName = Get("ModuleName"); if (id == 1000 && moduleName == "") moduleName = Pos(3);
+            var exceptionCode = Get("ExceptionCode"); if (id == 1000 && exceptionCode == "") exceptionCode = Pos(6);
+            var bugcheck = Get("BugcheckCode"); var powerButton = Get("PowerButtonTimestamp");
+            ulong.TryParse(bugcheck, out var bugcheckNumber); ulong.TryParse(powerButton, out var powerButtonNumber);
+            // Group application failures by program and exception so changing temporary module names
+            // (common with MSI installers) do not hide a recurring program-level pattern.
+            var detail = id == 1000 ? appName + "|" + exceptionCode :
+                id == 1001 ? Get("param1") : id == 41 ? (bugcheckNumber != 0 ? "bugcheck:" + bugcheck : powerButtonNumber != 0 ? "power-button" : "unknown") :
                 id == 1074 ? Get("param1") + "|" + Get("param5") :
                 Get("DeviceName") + "|" + Get("ErrorSource");
-            var cause = id == 41 ? ShutdownCause(Get("BugcheckCode"), Get("PowerButtonTimestamp")) :
-                id == 1000 ? "Application crash recorded; not evidence that it caused a system shutdown." :
+            var cause = id == 41 ? ShutdownCause(bugcheck, powerButton) :
+                id == 1000 ? "Application crash recorded. Faulting module: " + Empty(moduleName) + "; exception: " + Empty(exceptionCode) +
+                    ". This is not evidence that the application caused a system shutdown." :
                 id == 1001 ? "Windows recorded a bug check. Root cause requires supporting evidence/dump analysis." :
                 id == 1074 ? "Windows recorded an initiated shutdown/restart. Process: " + Empty(Get("param1")) + "; reason: " + Empty(Get("param5")) + "." :
                 id == 6008 ? "Windows recorded an improper shutdown, but this event does not identify its cause." :
@@ -414,7 +447,7 @@ namespace A2ZSysIns
             if (item == null)
             {
                 item = new EventFinding { Source = provider, EventId = id, Signature = signature, Cause = cause,
-                    Summary = id == 41 ? "Unexpected shutdown" : id == 1000 ? "Application crash: " + (Get("AppName") == "" ? "Unknown application" : Get("AppName")) :
+                    Summary = id == 41 ? "Unexpected shutdown" : id == 1000 ? "Application crash: " + (appName == "" ? "Unknown application" : appName) :
                     id == 1001 ? "BSOD / bug check" : id == 1074 ? "Initiated shutdown: " + Empty(Get("param1")) : provider + " event " + id,
                     Level = id == 41 || id == 1074 || id == 6008 ? "Information" : "Warning" };
                 r.Events.Add(item);
