@@ -7,8 +7,8 @@ namespace A2ZSysIns
     [DataContract]
     public sealed class InspectionReport
     {
-        [DataMember] public string SchemaVersion = "2.1";
-        [DataMember] public string RuleSetVersion = "2.1-evidence-only";
+        [DataMember] public string SchemaVersion = "2.2";
+        [DataMember] public string RuleSetVersion = "2.2-safe-stress";
         [DataMember] public List<Measurement> Measurements = new List<Measurement>();
         [DataMember] public List<LogEntry> DiagnosticLog = new List<LogEntry>();
         [DataMember] public List<VolumeRecord> Volumes = new List<VolumeRecord>();
@@ -17,6 +17,7 @@ namespace A2ZSysIns
         [DataMember] public double? BatteryDesignedCapacity;
         [DataMember] public double? BatteryFullChargeCapacity;
         [DataMember] public double? BatteryWearPercent;
+        [DataMember] public CpuStressResult CpuStressTest;
         [DataMember] public string InspectionId;
         [DataMember] public DateTime StartedAt;
         [DataMember] public DateTime CompletedAt;
@@ -109,5 +110,25 @@ namespace A2ZSysIns
         [DataMember] public string Name;
         [DataMember] public long TotalBytes;
         [DataMember] public long FreeBytes;
+    }
+    [DataContract] public sealed class CpuStressResult
+    {
+        [DataMember] public DateTime StartedAt;
+        [DataMember] public DateTime CompletedAt;
+        [DataMember] public string Status;
+        [DataMember] public string StopReason;
+        [DataMember] public int LogicalWorkers;
+        [DataMember] public int PlannedDurationSeconds;
+        [DataMember] public int ActualDurationSeconds;
+        [DataMember] public double? BaselineTemperatureC;
+        [DataMember] public double? MaximumTemperatureC;
+        [DataMember] public long WorkIterations;
+        [DataMember] public List<CpuStressSample> Samples = new List<CpuStressSample>();
+    }
+    [DataContract] public sealed class CpuStressSample
+    {
+        [DataMember] public int ElapsedSeconds;
+        [DataMember] public int TargetLoadPercent;
+        [DataMember] public double TemperatureC;
     }
 }
