@@ -44,9 +44,13 @@ namespace A2ZSysIns
                 r.MemoryUsedPercent.HasValue ? r.MemoryUsedPercent.Value.ToString("0.0") + "% used; workload snapshot, not faulty RAM." : "Cannot measure RAM usage.");
             if (r.MemoryUsedPercent >= 85) Finding(r, "Attention", "Resources", "High memory usage",
                 r.MemoryUsedPercent.Value.ToString("0.0") + "% used.", "Review active workload; this is not a RAM integrity test.", "Memory snapshot");
-            Add(r, "Battery wear", "Not assessed", "Charge level is not health; wear measurement not implemented.");
-            if (!r.Measurements.Any(x => x.Target == "Battery wear"))
-                EvidenceEngine.Record(r, "Battery wear", "Not implemented", "Unavailable", "Cannot measure wear; current charge is not a wear indicator.");
+            Add(r, "Battery wear", r.BatteryWearPercent.HasValue ? (r.BatteryWearPercent >= 40 ? "Attention" : "Observed") : "Not assessed",
+                r.BatteryWearPercent.HasValue ? r.BatteryWearPercent.Value.ToString("0.0") + "% wear; full-charge capacity " +
+                    r.BatteryFullChargeCapacity.Value.ToString("0") + " of design " + r.BatteryDesignedCapacity.Value.ToString("0") + "." :
+                    "Cannot measure battery wear; current charge is not a wear indicator.");
+            if (r.BatteryWearPercent >= 40) Finding(r, "Attention", "Battery", "Battery capacity wear",
+                r.BatteryWearPercent.Value.ToString("0.0") + "% capacity loss from design value.",
+                "Confirm runtime under normal use and consider replacement if service time is inadequate.", "Battery capacity measurement");
             Add(r, "System condition", "Inventory only", "Device inventory is not proof of a healthy operating system.");
             r.OverallScore = null;
             r.OverallStatus = r.Findings.Any(x => x.Severity == "Critical") ? "Critical indicators — incomplete assessment" : "Evidence review — no overall health percentage";
