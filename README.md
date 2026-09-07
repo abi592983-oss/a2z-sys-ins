@@ -11,6 +11,7 @@ Windows-first, offline, read-only PC health inspection and printable reporting t
 - Basic battery and Device Manager condition
 - Evidence-based assessments without an invented overall health percentage
 - In-app report preview, Windows printing/PDF printing, JSON evidence, text summary and downloadable diagnostic log
+- Optional 60-second staged CPU load test with live temperature monitoring, manual cancellation and a 90°C safety abort
 - No ERP connection, cloud requirement, repair, cleanup, update or system modification
 
 ## Supported systems
@@ -48,7 +49,7 @@ Review and comply with third-party licences when redistributing the application.
 
 ## Safety boundary
 
-System Inspector is an inspection tool. It does not run repair switches, SMART self-tests, stress tests, SFC, DISM repair, CHKDSK repair, cleanup, optimization, driver installation, or Windows updates.
+System Inspector is an inspection tool. It does not run repair switches, SMART self-tests, SFC, DISM repair, CHKDSK repair, cleanup, optimization, driver installation, or Windows updates. The CPU stress test is an explicit, technician-started exception: it never runs automatically, lasts at most 60 seconds, requires an actual CPU temperature sensor and stops at 90°C or when monitoring is lost.
 
 ## Important limitation
 
