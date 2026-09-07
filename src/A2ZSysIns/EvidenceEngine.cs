@@ -85,7 +85,7 @@ namespace A2ZSysIns
         {
             using (var identity = WindowsIdentity.GetCurrent())
                 r.IsAdministrator = new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
-            Log(r, "Session started", "App 2.0; rules " + r.RuleSetVersion + "; administrator=" + r.IsAdministrator);
+            Log(r, "Session started", "App 2.1; rules " + r.RuleSetVersion + "; administrator=" + r.IsAdministrator);
             if (!r.IsAdministrator) r.Limitations.Add("Not elevated: some hardware readings may be unavailable. Security protections are not disabled.");
         }
 
@@ -214,6 +214,11 @@ namespace A2ZSysIns
                     d.LifeMeaning = "100 minus NVMe percentage_used (endurance estimate, not overall health).";
                 }
             }
+            if ((double?)j.SelectToken("endurance_used.current_percent") is double enduranceUsed && enduranceUsed >= 0)
+            {
+                d.RemainingLifePercent = Math.Max(0, 100 - enduranceUsed);
+                d.LifeMeaning = "100 minus SMART endurance_used (endurance estimate, not overall health).";
+            }
         }
         private static void SmartFallback(InspectionReport r, DriveInfoRecord d)
         {
@@ -315,6 +320,51 @@ namespace A2ZSysIns
                 }
                 catch (Exception fallback) { Record(r, "RAM usage", "WMI fallback", "Unavailable", fallback.Message); }
             }
+            BatteryWear(r);
+        }
+
+        private static void BatteryWear(InspectionReport r)
+        {
+            try
+            {
+                var designed = Wmi(r, @"root\wmi", "SELECT InstanceName,DesignedCapacity FROM BatteryStaticData")
+                    .Where(x => Convert.ToDouble(x["DesignedCapacity"], CultureInfo.InvariantCulture) > 0).ToList();
+                var full = Wmi(r, @"root\wmi", "SELECT InstanceName,FullChargedCapacity FROM BatteryFullChargedCapacity")
+                    .Where(x => Convert.ToDouble(x["FullChargedCapacity"], CultureInfo.InvariantCulture) > 0).ToList();
+                if (designed.Count != 1 || full.Count != 1) throw new InvalidOperationException("No unique battery capacity pair was returned.");
+                SetBatteryWear(r, Convert.ToDouble(designed[0]["DesignedCapacity"], CultureInfo.InvariantCulture),
+                    Convert.ToDouble(full[0]["FullChargedCapacity"], CultureInfo.InvariantCulture), "Windows battery WMI");
+                return;
+            }
+            catch (Exception ex) { Log(r, "Battery WMI primary failed", ex.GetBaseException().Message); }
+
+            var output = Path.Combine(Path.GetTempPath(), "A2Z-Battery-" + Guid.NewGuid().ToString("N") + ".xml");
+            try
+            {
+                Run(r, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "powercfg.exe"),
+                    "/batteryreport /xml /output \"" + output + "\"");
+                var xml = XDocument.Load(output);
+                double Capacity(string name)
+                {
+                    var value = xml.Descendants().FirstOrDefault(x => x.Name.LocalName.Equals(name, StringComparison.OrdinalIgnoreCase))?.Value;
+                    if (!double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var n) || n <= 0)
+                        throw new InvalidOperationException(name + " was not present in the battery report.");
+                    return n;
+                }
+                Log(r, "powercfg battery XML response", xml.ToString());
+                SetBatteryWear(r, Capacity("DesignCapacity"), Capacity("FullChargeCapacity"), "powercfg battery-report fallback");
+            }
+            catch (Exception ex) { Record(r, "Battery wear", "WMI + powercfg fallback", "Unavailable", "Cannot measure battery wear: " + ex.GetBaseException().Message); }
+            finally { try { if (File.Exists(output)) File.Delete(output); } catch { } }
+        }
+
+        private static void SetBatteryWear(InspectionReport r, double designed, double full, string source)
+        {
+            r.BatteryDesignedCapacity = designed;
+            r.BatteryFullChargeCapacity = full;
+            r.BatteryWearPercent = Math.Max(0, Math.Min(100, 100 * (designed - full) / designed));
+            Record(r, "Battery wear", source, "Measured", "Full-charge capacity compared with design capacity; charge level is separate.",
+                JsonConvert.SerializeObject(new { DesignedCapacity = designed, FullChargeCapacity = full, WearPercent = r.BatteryWearPercent }));
         }
 
         public static bool ActualTemperature(SensorRecord s) => s.Type == "Temperature" && s.Maximum.HasValue
