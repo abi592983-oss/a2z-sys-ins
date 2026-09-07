@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 
@@ -8,6 +9,7 @@ namespace A2ZSysIns
     public partial class MainWindow : Window
     {
         private InspectionReport _report;
+        private CancellationTokenSource _stressCancellation;
         public MainWindow()
         {
             InitializeComponent();
@@ -59,8 +61,44 @@ namespace A2ZSysIns
         private void ExportJson_Click(object sender, RoutedEventArgs e) { if (Ready()) ReportService.SaveJson(_report, this); }
         private void ExportText_Click(object sender, RoutedEventArgs e) { if (Ready()) ReportService.SaveText(_report, this); }
         private void ExportLog_Click(object sender, RoutedEventArgs e) { if (Ready()) ReportService.SaveDiagnosticLog(_report, this); }
+        private async void Stress_Click(object sender, RoutedEventArgs e)
+        {
+            if (!Ready() || _stressCancellation != null) return;
+            var answer = MessageBox.Show(this,
+                "This optional test deliberately loads every logical CPU for up to 60 seconds. It ramps through 40%, 70% and 100% target load and stops at 90 °C or if CPU temperature monitoring is lost.\n\nDo not run it on a visibly damaged, unstable or poorly cooled computer. Continue?",
+                "CPU stress-test safety confirmation", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (answer != MessageBoxResult.Yes) return;
+            _stressCancellation = new CancellationTokenSource();
+            RunStressButton.IsEnabled = false; CancelStressButton.IsEnabled = true; StartButton.IsEnabled = false;
+            try
+            {
+                var progress = new Progress<string>(text => { StatusText.Text = text; OverallText.Text = text; });
+                var result = await CpuStressTestService.RunAsync(_report, _stressCancellation.Token, progress);
+                Scoring.Calculate(_report);
+                ResultsList.ItemsSource = null; ResultsList.ItemsSource = _report.Scores;
+                OverallText.Text = "CPU test: " + result.Status + " — " + result.StopReason;
+                ReportViewer.Document = ReportService.Build(_report);
+            }
+            catch (Exception ex)
+            {
+                EvidenceEngine.Log(_report, "CPU stress UI error", ex.ToString());
+                MessageBox.Show(this, ex.GetBaseException().Message, "CPU stress test", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                _stressCancellation.Dispose(); _stressCancellation = null;
+                RunStressButton.IsEnabled = true; CancelStressButton.IsEnabled = false; StartButton.IsEnabled = true;
+                StatusText.Text = "CPU stress test finished";
+            }
+        }
+        private void CancelStress_Click(object sender, RoutedEventArgs e)
+        {
+            if (_stressCancellation == null) return;
+            EvidenceEngine.Log(_report, "CPU stress cancellation requested", "Technician pressed Stop stress test.");
+            _stressCancellation.Cancel();
+        }
         private void Print_Click(object sender, RoutedEventArgs e) { if (Ready()) ReportService.Print(ReportService.Build(_report), this); }
-        private void New_Click(object sender, RoutedEventArgs e) { _report = null; ResultsList.ItemsSource = null; ReportViewer.Document = null; Progress.Value = 0; ProgressText.Text = "Ready"; Tabs.SelectedIndex = 0; StatusText.Text = "Ready"; }
+        private void New_Click(object sender, RoutedEventArgs e) { if (_stressCancellation != null) return; _report = null; ResultsList.ItemsSource = null; ReportViewer.Document = null; Progress.Value = 0; ProgressText.Text = "Ready"; Tabs.SelectedIndex = 0; StatusText.Text = "Ready"; }
         private bool Ready() { if (_report != null) return true; MessageBox.Show(this, "Complete an inspection first."); return false; }
     }
 }
