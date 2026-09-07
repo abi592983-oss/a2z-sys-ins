@@ -14,8 +14,10 @@ namespace A2ZSysIns
 {
     public static class Collectors
     {
+        [ThreadStatic] private static InspectionReport _active;
         public static void CollectSystem(InspectionReport report)
         {
+            _active = report;
             report.System["Computer name"] = Environment.MachineName;
             report.System["Operating system"] = GetWmi("Win32_OperatingSystem", "Caption");
             report.System["OS version"] = Environment.OSVersion.VersionString;
@@ -29,7 +31,7 @@ namespace A2ZSysIns
             report.System["Installed RAM"] = FormatBytes(ToLong(GetWmi("Win32_ComputerSystem", "TotalPhysicalMemory")));
             report.System["GPU"] = JoinWmi("Win32_VideoController", "Name");
             report.System["GPU driver"] = JoinWmi("Win32_VideoController", "DriverVersion");
-            report.System["System uptime"] = TimeSpan.FromMilliseconds(Environment.TickCount & int.MaxValue).ToString(@"d\.hh\:mm\:ss");
+            report.System["Last boot time (WMI)"] = GetWmi("Win32_OperatingSystem", "LastBootUpTime");
             report.System[".NET runtime"] = Environment.Version.ToString();
             CollectMemoryModules(report);
             CollectVolumes(report);
@@ -66,8 +68,12 @@ namespace A2ZSysIns
                     report.System["Windows display version"] = Convert.ToString(key == null ? null : (key.GetValue("DisplayVersion") ?? key.GetValue("ReleaseId"))) ?? "N/A";
             }
             catch { report.System["Windows display version"] = "N/A"; }
-            var problemDevices = QueryWhere("Win32_PnPEntity", "ConfigManagerErrorCode <> 0", "Name", "ConfigManagerErrorCode");
-            report.System["Problem devices"] = problemDevices.Count == 0 ? "None reported" : string.Join("; ", problemDevices.Take(10).Select(r => Val(r, "Name") + " (code " + Val(r, "ConfigManagerErrorCode") + ")"));
+            try
+            {
+                var problemDevices = EvidenceEngine.Wmi(report, @"root\cimv2", "SELECT Name,ConfigManagerErrorCode FROM Win32_PnPEntity WHERE ConfigManagerErrorCode <> 0");
+                report.System["Problem devices"] = problemDevices.Count == 0 ? "None reported by this query" : string.Join("; ", problemDevices.Take(10).Select(r => Val(r, "Name") + " (code " + Val(r, "ConfigManagerErrorCode") + ")"));
+            }
+            catch (Exception ex) { report.System["Problem devices"] = "Not measured"; EvidenceEngine.Record(report, "Problem devices", "WMI", "Unavailable", ex.Message); }
         }
 
         public static void CollectDrives(InspectionReport report)
@@ -194,8 +200,10 @@ namespace A2ZSysIns
                     if (sample < 5) Thread.Sleep(1000);
                 }
                 report.Sensors.AddRange(values.Values.OrderBy(x => x.Hardware).ThenBy(x => x.Type).ThenBy(x => x.Name));
+                try { EvidenceEngine.Log(report, "LibreHardwareMonitor diagnostic report", Convert.ToString(type.GetMethod("GetReport")?.Invoke(computer, null))); }
+                catch (Exception ex) { EvidenceEngine.Log(report, "Sensor diagnostic report error", ex.GetBaseException().Message); }
             }
-            catch (Exception ex) { report.Limitations.Add("Bundled sensor collector failed: " + ex.GetBaseException().Message + ". Run as administrator and confirm this hardware exposes supported sensors."); }
+            catch (Exception ex) { EvidenceEngine.Record(report, "Hardware sensors", "LibreHardwareMonitor", "Failed", ex.GetBaseException().Message); }
             finally { try { if (computer != null) computer.GetType().GetMethod("Close").Invoke(computer, null); } catch { } }
         }
 
@@ -220,6 +228,11 @@ namespace A2ZSysIns
         private static List<Dictionary<string, object>> Query(string cls, params string[] props) => QueryWhere(cls, null, props);
         private static List<Dictionary<string, object>> QueryWhere(string cls, string where, params string[] props)
         {
+            if (_active != null)
+            {
+                try { return EvidenceEngine.Wmi(_active, @"root\cimv2", "SELECT " + string.Join(",", props) + " FROM " + cls + (string.IsNullOrEmpty(where) ? "" : " WHERE " + where)); }
+                catch (Exception ex) { EvidenceEngine.Record(_active, cls, "WMI", "Unavailable", ex.Message); return new List<Dictionary<string, object>>(); }
+            }
             var result = new List<Dictionary<string, object>>();
             try { using (var s = new ManagementObjectSearcher("SELECT " + string.Join(",", props) + " FROM " + cls + (string.IsNullOrEmpty(where) ? "" : " WHERE " + where))) foreach (ManagementObject o in s.Get()) { var d = new Dictionary<string, object>(); foreach (var p in props) d[p] = o[p]; result.Add(d); o.Dispose(); } } catch { }
             return result;
