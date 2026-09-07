@@ -51,6 +51,17 @@ namespace A2ZSysIns
             if (r.BatteryWearPercent >= 40) Finding(r, "Attention", "Battery", "Battery capacity wear",
                 r.BatteryWearPercent.Value.ToString("0.0") + "% capacity loss from design value.",
                 "Confirm runtime under normal use and consider replacement if service time is inadequate.", "Battery capacity measurement");
+            if (r.CpuStressTest == null)
+                Add(r, "CPU stress test", "Not run", "Optional manual safety test; never starts during the automatic inspection.");
+            else
+            {
+                var test = r.CpuStressTest;
+                var temperature = test.MaximumTemperatureC.HasValue ? test.MaximumTemperatureC.Value.ToString("0.0") + " °C maximum. " : "Temperature unavailable. ";
+                Add(r, "CPU stress test", test.Status == "Completed" ? "Observed" : test.Status,
+                    temperature + test.ActualDurationSeconds + " seconds; " + test.StopReason);
+                if (test.Status == "Thermal abort") Finding(r, "Attention", "Thermals", "CPU stress test stopped at safety limit",
+                    temperature + test.StopReason, "Inspect cooling before any longer workload test.", "CPU stress-test samples in JSON");
+            }
             Add(r, "System condition", "Inventory only", "Device inventory is not proof of a healthy operating system.");
             r.OverallScore = null;
             r.OverallStatus = r.Findings.Any(x => x.Severity == "Critical") ? "Critical indicators — incomplete assessment" : "Evidence review — no overall health percentage";
