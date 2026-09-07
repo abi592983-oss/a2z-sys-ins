@@ -8,7 +8,15 @@ namespace A2ZSysIns
     public partial class MainWindow : Window
     {
         private InspectionReport _report;
-        public MainWindow() { InitializeComponent(); }
+        public MainWindow()
+        {
+            InitializeComponent();
+            var area = SystemParameters.WorkArea;
+            MaxWidth = area.Width;
+            MaxHeight = area.Height;
+            Width = Math.Min(1080, Math.Max(MinWidth, area.Width - 24));
+            Height = Math.Min(680, Math.Max(MinHeight, area.Height - 24));
+        }
 
         private async void Start_Click(object sender, RoutedEventArgs e)
         {
