@@ -1,6 +1,7 @@
 using Microsoft.Win32;
 using System;
 using System.IO;
+using System.Linq;
 using System.Runtime.Serialization.Json;
 using System.Text;
 using System.Windows;
@@ -14,19 +15,21 @@ namespace A2ZSysIns
     {
         public static FlowDocument Build(InspectionReport r)
         {
+            EvidenceEngine.Log(r, "Report preview generated", "FlowDocument built from saved inspection evidence.");
             var d = new FlowDocument { PagePadding = new Thickness(55), FontFamily = new FontFamily("Segoe UI"), FontSize = 11, Foreground = new SolidColorBrush(Color.FromRgb(23, 43, 77)), Background = Brushes.White, ColumnGap = 0, ColumnWidth = double.PositiveInfinity };
             d.Blocks.Add(new Paragraph(new Run("A2Z SYSTEM INSPECTOR")) { FontSize = 23, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Color.FromRgb(16, 42, 67)), Margin = new Thickness(0, 0, 0, 2) });
             d.Blocks.Add(new Paragraph(new Run("Computer Health Inspection Report")) { FontSize = 14, Foreground = Brushes.DimGray, Margin = new Thickness(0, 0, 0, 18) });
             d.Blocks.Add(Heading("Inspection summary"));
             d.Blocks.Add(KeyValues(new[] { "Inspection ID", r.InspectionId, "Customer / reference", Empty(r.CustomerReference), "Job number", Empty(r.JobNumber), "Technician", Empty(r.Technician), "Date", r.CompletedAt.ToString("yyyy-MM-dd HH:mm"), "Reported problem", Empty(r.ReportedProblem) }));
-            var scoreText = r.OverallScore.HasValue ? r.OverallScore + "/100 — " + r.OverallStatus : "N/A — insufficient data";
+            var scoreText = r.OverallStatus;
             d.Blocks.Add(new Paragraph(new Run(scoreText)) { FontSize = 20, FontWeight = FontWeights.SemiBold, Background = StatusBrush(r.OverallStatus), Padding = new Thickness(10), Margin = new Thickness(0, 16, 0, 12) });
-            d.Blocks.Add(Heading("Category results")); var scoreTable = NewTable("Category", "Score", "Status", "Reason"); foreach (var s in r.Scores) Row(scoreTable, s.Category, s.Score.HasValue ? s.Score + "/100" : "N/A", s.Status, s.Reason); d.Blocks.Add(scoreTable);
+            d.Blocks.Add(Heading("Evidence assessments")); var scoreTable = NewTable("Measurement", "Assessment", "Evidence / limitation"); foreach (var s in r.Scores) Row(scoreTable, s.Category, s.Status, s.Reason); d.Blocks.Add(scoreTable);
             d.Blocks.Add(Heading("Findings and recommendations")); if (r.Findings.Count == 0) d.Blocks.Add(new Paragraph(new Run("No significant findings were produced by the available checks."))); foreach (var f in r.Findings) d.Blocks.Add(new Paragraph(new Run(f.Severity + " — " + f.Title + "\n") { FontWeight = FontWeights.Bold }) { Inlines = { new Run(f.Explanation + " Recommendation: " + f.Recommendation) } });
             d.Blocks.Add(new Paragraph(new Run("Technical details")) { BreakPageBefore = true, FontSize = 18, FontWeight = FontWeights.Bold });
             d.Blocks.Add(Heading("System information")); var sys = NewTable("Item", "Value"); foreach (var x in r.System) Row(sys, x.Key, x.Value); d.Blocks.Add(sys);
-            d.Blocks.Add(Heading("Physical storage")); var drives = NewTable("Model", "Serial", "Interface", "Capacity", "Status"); foreach (var x in r.Drives) Row(drives, x.Model, x.Serial, x.Interface, Collectors.FormatBytes(x.SizeBytes), x.SmartStatus); d.Blocks.Add(drives);
-            d.Blocks.Add(Heading("Live sensors")); var sensors = NewTable("Hardware", "Sensor", "Current", "Minimum", "Maximum"); foreach (var x in r.Sensors) Row(sensors, x.Hardware, x.Name, Num(x.Current, x.Unit), Num(x.Minimum, x.Unit), Num(x.Maximum, x.Unit)); d.Blocks.Add(sensors);
+            d.Blocks.Add(Heading("Physical storage")); var drives = NewTable("Model", "Capacity", "Assessment", "Life indicator", "SMART threshold"); foreach (var x in r.Drives) Row(drives, x.Model, Collectors.FormatBytes(x.SizeBytes), x.Assessment, x.RemainingLifePercent.HasValue ? x.RemainingLifePercent.Value.ToString("0") + "%" : "Cannot measure", x.SmartStatus); d.Blocks.Add(drives);
+            d.Blocks.Add(Heading("Actual temperature sensors")); var sensors = NewTable("Hardware", "Sensor", "Current", "Minimum", "Maximum"); foreach (var x in r.Sensors.Where(EvidenceEngine.ActualTemperature)) Row(sensors, x.Hardware, x.Name, Num(x.Current, x.Unit), Num(x.Minimum, x.Unit), Num(x.Maximum, x.Unit)); d.Blocks.Add(sensors);
+            d.Blocks.Add(Heading("Measurement coverage")); var coverage = NewTable("Target", "Source", "Status", "Reason"); foreach (var x in r.Measurements) Row(coverage, x.Target, x.Source, x.Status, x.Reason); d.Blocks.Add(coverage);
             d.Blocks.Add(Heading("Inspection limitations")); foreach (var x in r.Limitations) d.Blocks.Add(new Paragraph(new Run("• " + x)) { Margin = new Thickness(8, 2, 0, 2) });
             d.Blocks.Add(Heading("Technician notes")); d.Blocks.Add(new Paragraph(new Run(Empty(r.TechnicianNotes) + "\n\n")));
             d.Blocks.Add(new Paragraph(new Run("This is a read-only screening report, not a guarantee of future reliability. No repairs or modifications were performed by A2Z System Inspector.")) { FontSize = 9, Foreground = Brushes.DimGray, Margin = new Thickness(0, 20, 0, 0) });
@@ -35,12 +38,30 @@ namespace A2ZSysIns
         public static void SaveJson(InspectionReport report, Window owner)
         {
             var dialog = new SaveFileDialog { Filter = "JSON evidence (*.json)|*.json", FileName = "A2Z-Inspection-" + report.InspectionId + ".json" }; if (dialog.ShowDialog(owner) != true) return;
+            EvidenceEngine.Log(report, "JSON export", dialog.FileName);
             using (var fs = File.Create(dialog.FileName)) new DataContractJsonSerializer(typeof(InspectionReport)).WriteObject(fs, report);
         }
         public static void SaveText(InspectionReport r, Window owner)
         {
             var dialog = new SaveFileDialog { Filter = "Text report (*.txt)|*.txt", FileName = "A2Z-Inspection-" + r.InspectionId + ".txt" }; if (dialog.ShowDialog(owner) != true) return;
-            var b = new StringBuilder(); b.AppendLine("A2Z SYSTEM INSPECTOR").AppendLine("Inspection: " + r.InspectionId).AppendLine("Customer/reference: " + r.CustomerReference).AppendLine("Technician: " + r.Technician).AppendLine("Overall: " + (r.OverallScore.HasValue ? r.OverallScore + "/100 " + r.OverallStatus : "N/A")); foreach (var s in r.Scores) b.AppendLine(s.Category + ": " + (s.Score.HasValue ? s.Score + "/100" : "N/A") + " — " + s.Reason); foreach (var f in r.Findings) b.AppendLine(f.Severity + ": " + f.Title + " — " + f.Explanation + " Recommendation: " + f.Recommendation); File.WriteAllText(dialog.FileName, b.ToString(), Encoding.UTF8);
+            EvidenceEngine.Log(r, "Text report export", dialog.FileName);
+            var b = new StringBuilder(); b.AppendLine("A2Z SYSTEM INSPECTOR").AppendLine("Inspection: " + r.InspectionId).AppendLine("Customer/reference: " + r.CustomerReference).AppendLine("Technician: " + r.Technician).AppendLine("Assessment: " + r.OverallStatus); foreach (var s in r.Scores) b.AppendLine(s.Category + ": " + s.Status + " — " + s.Reason); foreach (var f in r.Findings) b.AppendLine(f.Severity + ": " + f.Title + " — " + f.Explanation + " Recommendation: " + f.Recommendation); File.WriteAllText(dialog.FileName, b.ToString(), Encoding.UTF8);
+        }
+        public static void SaveDiagnosticLog(InspectionReport r, Window owner)
+        {
+            var dialog = new SaveFileDialog { Filter = "Diagnostic log (*.log)|*.log|Text file (*.txt)|*.txt", FileName = "A2Z-Inspection-" + r.InspectionId + "-diagnostic.log" };
+            if (dialog.ShowDialog(owner) != true) return;
+            EvidenceEngine.Log(r, "Diagnostic log export", dialog.FileName);
+            var b = new StringBuilder();
+            b.AppendLine("A2Z SYSTEM INSPECTOR DIAGNOSTIC LOG")
+                .AppendLine("Inspection: " + r.InspectionId)
+                .AppendLine("Schema: " + r.SchemaVersion + " | Rules: " + r.RuleSetVersion)
+                .AppendLine("Administrator: " + r.IsAdministrator)
+                .AppendLine("NOTICE: This contains device identifiers and raw diagnostic responses. Review before sharing.")
+                .AppendLine(new string('=', 78));
+            foreach (var x in r.DiagnosticLog)
+                b.AppendLine(x.AtUtc.ToString("o") + "  " + x.Action).AppendLine(x.Response ?? "(no response)").AppendLine(new string('-', 78));
+            File.WriteAllText(dialog.FileName, b.ToString(), Encoding.UTF8);
         }
         public static void Print(FlowDocument source, Window owner)
         {
