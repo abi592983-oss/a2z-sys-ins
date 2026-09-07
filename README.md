@@ -2,15 +2,15 @@
 
 Windows-first, offline, read-only PC health inspection and printable reporting tool for A2Z Tec Solutions.
 
-## Version 1 capabilities
+## Version 2 capabilities
 
 - Windows, hardware, RAM, graphics, volume and device information
-- Physical storage inventory with optional `smartctl` JSON evidence
+- Physical storage inventory with bundled `smartctl` JSON evidence and a Windows ATA SMART fallback
 - Bundled live temperature, load, fan, clock and voltage readings through LibreHardwareMonitorLib
-- 30-day summary of important Kernel-Power, BugCheck, WHEA, Disk and NTFS events
+- 30-day evidence for unexpected/initiated shutdowns, bug checks, crash-dump failures, WHEA, Disk, NTFS and repeated application crashes
 - Basic battery and Device Manager condition
-- Versioned 0–100 category scores, critical storage cap and N/A handling
-- In-app report preview, Windows printing/PDF printing, JSON evidence and text summary
+- Evidence-based assessments without an invented overall health percentage
+- In-app report preview, Windows printing/PDF printing, JSON evidence, text summary and downloadable diagnostic log
 - No ERP connection, cloud requirement, repair, cleanup, update or system modification
 
 ## Supported systems
@@ -36,9 +36,13 @@ msbuild A2ZSysIns.sln /restore /p:Configuration=Release /p:Platform=x64
 
 ## Diagnostic adapters
 
-LibreHardwareMonitorLib is restored during the build and included automatically in the downloadable application artifact. The technician does not need to download or copy the sensor library. Administrator access may still be required for low-level sensor access.
+LibreHardwareMonitorLib is restored during the build and included automatically in the downloadable application artifact. The official smartmontools 7.5 Windows build is also bundled, including its corresponding source archive. The technician does not need to download or copy either collector.
 
-Full SMART evidence remains optional in this version. Place the official `smartctl.exe` and its required runtime files under a `tools` directory beside the executable to enable it.
+The application requests administrator access at launch because low-level temperature, SMART and Event Log access commonly requires elevation. It does not disable Windows security protections.
+
+For storage, the primary method is structured `smartctl` JSON. If that cannot read a drive, the application attempts the Windows `MSStorageDriver_FailurePredictData` and `MSStorageDriver_FailurePredictStatus` providers, matched by PNP ID rather than list order. Unsupported USB bridges, NVMe drivers and vendor-specific life attributes are explicitly recorded as `Unavailable`/`Cannot measure`; Windows `Status=OK` is never converted into a health percentage.
+
+The diagnostic log is a timestamped replay of System Inspector collector requests, responses, errors, fallbacks and assessment decisions. It may contain serial numbers, PNP identifiers and raw event XML, so review it before sharing.
 
 Review and comply with third-party licences when redistributing the application. Run the app as administrator when complete sensor and Event Log access is required.
 
@@ -46,6 +50,6 @@ Review and comply with third-party licences when redistributing the application.
 
 System Inspector is an inspection tool. It does not run repair switches, SMART self-tests, stress tests, SFC, DISM repair, CHKDSK repair, cleanup, optimization, driver installation, or Windows updates.
 
-## Important Version 1 limitation
+## Important limitation
 
-The initial score rules are conservative screening rules and are identified as ruleset `1.0`. They must be validated against known healthy and faulty computers before the scores are used as a definitive service decision.
+The report is a read-only screening snapshot. SMART, Windows events and a short temperature sample cannot guarantee future reliability or prove a single root cause. Ruleset `2.0-evidence-only` withholds an overall percentage and reports exactly which measurements were available.
