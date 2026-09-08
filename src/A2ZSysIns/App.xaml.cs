@@ -63,6 +63,8 @@ namespace A2ZSysIns
 
         protected override void OnExit(ExitEventArgs e)
         {
+            try { DriverAccessManager.CleanupOnApplicationExit(); }
+            catch (Exception ex) { PortableSessionLog.Write("Application-exit driver cleanup exception", ex.ToString()); }
             PortableSessionLog.Write("Application exit", "ExitCode=" + e.ApplicationExitCode + "; cleanup lifecycle completed/attempted. Diagnostic log intentionally retained.");
             PortableSessionLog.Complete();
             base.OnExit(e);
