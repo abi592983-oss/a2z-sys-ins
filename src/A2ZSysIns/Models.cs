@@ -17,8 +17,8 @@ namespace A2ZSysIns
     [DataContract]
     public sealed class InspectionReport
     {
-        [DataMember] public string SchemaVersion = "2.2";
-        [DataMember] public string RuleSetVersion = "2.2-safe-stress";
+        [DataMember] public string SchemaVersion = "2.3";
+        [DataMember] public string RuleSetVersion = "2.3-failure-focused";
         [DataMember] public List<Measurement> Measurements = new List<Measurement>();
         [DataMember] public PersistentDiagnosticLog DiagnosticLog = new PersistentDiagnosticLog();
         [DataMember] public List<VolumeRecord> Volumes = new List<VolumeRecord>();
@@ -44,6 +44,8 @@ namespace A2ZSysIns
         [DataMember] public List<CategoryScore> Scores = new List<CategoryScore>();
         [DataMember] public int? OverallScore;
         [DataMember] public string OverallStatus;
+        [DataMember] public string CustomerSummary;
+        [DataMember] public List<string> PriorityActions = new List<string>();
         [DataMember] public List<string> Limitations = new List<string>();
     }
 
@@ -93,6 +95,8 @@ namespace A2ZSysIns
         [DataMember] public string Explanation;
         [DataMember] public string Recommendation;
         [DataMember] public string Evidence;
+        [DataMember] public string Confidence = "Moderate";
+        [DataMember] public string ActionLevel = "Monitor";
     }
     [DataContract] public sealed class CategoryScore
     {
