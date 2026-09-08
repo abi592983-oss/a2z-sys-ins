@@ -2,6 +2,7 @@
   <PropertyGroup>
     <TargetFramework>net48</TargetFramework>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <OutputType>WinExe</OutputType>
     <RootNamespace>A2ZSysIns</RootNamespace>
     <AssemblyName>A2Z System Inspector</AssemblyName>
