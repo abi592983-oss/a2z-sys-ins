@@ -7,4 +7,10 @@ This application package includes `smartctl` 7.5 from the smartmontools project.
 - Licence: GNU General Public License, version 2 or later
 - Corresponding source: `tools/smartmontools-7.5-source.tar.gz` in the packaged build
 
-LibreHardwareMonitorLib and Newtonsoft.Json are also distributed in the application package. Their licence files and project metadata are available through their NuGet packages and upstream projects.
+LibreHardwareMonitorLib 0.9.6 and Newtonsoft.Json are also distributed in the application package. Their licence files and project metadata are available through their NuGet packages and upstream projects.
+
+The portable package also carries the official PawnIO 2.2.0 installer at `tools/pawnio/2.2.0/PawnIO_setup.exe`. PawnIO provides the privileged hardware-access path used by current LibreHardwareMonitor releases. Inspector does not silently downgrade to older vulnerable low-level drivers when this path is unavailable; failure is recorded and safer/documented fallbacks should be used instead.
+
+- PawnIO official release repository: https://github.com/namazso/PawnIO.Setup
+- Bundled version: 2.2.0
+- Bundled installer SHA-256: `1f519a22e47187f70a1379a48ca604981c4fcf694f4e65b734aaa74a9fba3032`
