@@ -3,7 +3,37 @@
     <SolidColorBrush x:Key="Panel" Color="#0A1110"/><SolidColorBrush x:Key="Panel2" Color="#0D1715"/><SolidColorBrush x:Key="Green" Color="#58F58B"/><SolidColorBrush x:Key="DimGreen" Color="#8CBF9B"/><SolidColorBrush x:Key="Border" Color="#244834"/><SolidColorBrush x:Key="Amber" Color="#FFC857"/><SolidColorBrush x:Key="Red" Color="#FF6B6B"/>
     <Style TargetType="Button"><Setter Property="Background" Value="#10281B"/><Setter Property="Foreground" Value="{StaticResource Green}"/><Setter Property="BorderBrush" Value="#2F6B46"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Padding" Value="12,7"/><Setter Property="Margin" Value="4"/><Setter Property="FontFamily" Value="Consolas"/><Setter Property="FontWeight" Value="SemiBold"/></Style>
     <Style TargetType="TextBox"><Setter Property="Background" Value="#050807"/><Setter Property="Foreground" Value="#E8FFF0"/><Setter Property="BorderBrush" Value="#28523A"/><Setter Property="CaretBrush" Value="{StaticResource Green}"/><Setter Property="Padding" Value="8"/><Setter Property="Margin" Value="0,5"/></Style>
-    <Style TargetType="TabItem"><Setter Property="Foreground" Value="#BDECCB"/><Setter Property="Background" Value="#0A1110"/><Setter Property="Padding" Value="12,7"/></Style>
+    <Style TargetType="TabItem">
+      <Setter Property="Foreground" Value="#BDECCB"/>
+      <Setter Property="Background" Value="#0A1110"/>
+      <Setter Property="BorderBrush" Value="#214431"/>
+      <Setter Property="Padding" Value="12,7"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="TabItem">
+            <Border x:Name="TabBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1,1,1,0" Padding="{TemplateBinding Padding}" Margin="1,1,1,0">
+              <ContentPresenter ContentSource="Header" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsSelected" Value="True">
+                <Setter TargetName="TabBorder" Property="Background" Value="#10281B"/>
+                <Setter TargetName="TabBorder" Property="BorderBrush" Value="#58F58B"/>
+                <Setter Property="Foreground" Value="#9BFFB8"/>
+                <Setter Property="FontWeight" Value="Bold"/>
+              </Trigger>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="TabBorder" Property="Background" Value="#0D1D16"/>
+              </Trigger>
+              <MultiTrigger>
+                <MultiTrigger.Conditions><Condition Property="IsSelected" Value="True"/><Condition Property="IsMouseOver" Value="True"/></MultiTrigger.Conditions>
+                <Setter TargetName="TabBorder" Property="Background" Value="#143522"/>
+              </MultiTrigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
   </Window.Resources>
   <Grid>
     <Grid.RowDefinitions><RowDefinition Height="72"/><RowDefinition Height="*"/><RowDefinition Height="36"/></Grid.RowDefinitions>
