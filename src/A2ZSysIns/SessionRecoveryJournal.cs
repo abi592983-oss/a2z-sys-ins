@@ -86,12 +86,23 @@ namespace A2ZSysIns
             sessionId = null;
             try
             {
-                string ignored;
-                if (!HasIncompleteSession(out sessionId, out ignored) || string.IsNullOrWhiteSpace(sessionId)) return false;
-                var entries = ReadEntries().Where(x => x[2] == sessionId).ToList();
-                var owned = entries.Any(x => x[1] == "OWNED_RESOURCE" && x[3].IndexOf("driver¦PawnIO-2.2.0", StringComparison.OrdinalIgnoreCase) >= 0);
-                var verified = entries.Any(x => x[1] == "CLEANUP_RESOURCE" && x[3].IndexOf("driver¦PawnIO-2.2.0¦VERIFIED", StringComparison.OrdinalIgnoreCase) >= 0);
-                return owned && !verified;
+                if (!File.Exists(JournalPath)) return false;
+                var entries = ReadEntries();
+                var sessions = entries.Where(x => x[1] == "SESSION_START").Select(x => x[2]).Distinct().Reverse();
+                foreach (var candidate in sessions)
+                {
+                    if (candidate == _sessionId) continue;
+                    var related = entries.Where(x => x[2] == candidate).ToList();
+                    var completed = related.Any(x => x[1] == "SESSION_COMPLETE");
+                    var owned = related.Any(x => x[1] == "OWNED_RESOURCE" && x[3].IndexOf("driver¦PawnIO-2.2.0", StringComparison.OrdinalIgnoreCase) >= 0);
+                    var verified = related.Any(x => x[1] == "CLEANUP_RESOURCE" && x[3].IndexOf("driver¦PawnIO-2.2.0¦VERIFIED", StringComparison.OrdinalIgnoreCase) >= 0);
+                    if (!completed && owned && !verified)
+                    {
+                        sessionId = candidate;
+                        return true;
+                    }
+                }
+                return false;
             }
             catch { return false; }
         }
