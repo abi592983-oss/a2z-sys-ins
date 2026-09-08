@@ -57,6 +57,9 @@ namespace A2ZSysIns
             PortableSessionLog.Write("Application startup", "Portable diagnostic flight recorder initialized. Local recovery journal=" + SessionRecoveryJournal.PathName);
             if (incomplete) PortableSessionLog.Write("Previous incomplete session detected", "Session=" + previousSession + "; previousLog=" + previousLog);
 
+            try { PawnIoResidueCleaner.RecoverPreviousIncompleteSessionServiceResidue(); }
+            catch (Exception ex) { PortableSessionLog.Write("Previous-session PawnIO service recovery exception", ex.ToString()); }
+
             try { DriverAccessManager.RecoverPreviousOwnedPawnIo(); }
             catch (Exception ex) { PortableSessionLog.Write("Previous-session PawnIO recovery exception", ex.ToString()); }
 
@@ -69,6 +72,10 @@ namespace A2ZSysIns
         {
             try { DriverAccessManager.CleanupOnApplicationExit(); }
             catch (Exception ex) { PortableSessionLog.Write("Application-exit driver cleanup exception", ex.ToString()); }
+
+            try { PawnIoResidueCleaner.CleanupCurrentSessionServiceResidue(); }
+            catch (Exception ex) { PortableSessionLog.Write("Application-exit PawnIO service cleanup exception", ex.ToString()); }
+
             PortableSessionLog.Write("Application exit", "ExitCode=" + e.ApplicationExitCode + "; cleanup lifecycle completed/attempted. Diagnostic log intentionally retained.");
             PortableSessionLog.Complete();
             base.OnExit(e);
