@@ -88,7 +88,7 @@ namespace A2ZSysIns
                 r.Scores.Add(new CategoryScore { Category = "CPU throttling evidence", Score = null, Status = "NOT MEASURED", Reason = "The stress test completed, but reliable simultaneous CPU load + core-clock samples were not exposed." });
                 return;
             }
-            double reference;
+            double reference = 0;
             var referenceKnown = r.System.ContainsKey("CPU reported maximum clock") && double.TryParse((r.System["CPU reported maximum clock"] ?? "").Replace("MHz", "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out reference) && reference > 0;
             if (!referenceKnown)
             {
