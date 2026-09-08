@@ -1,13 +1,60 @@
 using Microsoft.Win32;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading;
 
 namespace A2ZSysIns
 {
     internal static class PawnIoResidueCleaner
     {
+        public static void VerifyPreviousCleanupAfterRestart()
+        {
+            string previousSession, previousStatus, previousLog;
+            if (!SessionRecoveryJournal.TryGetUnresolvedPawnIoCleanup(out previousSession, out previousStatus, out previousLog)) return;
+            if (string.IsNullOrWhiteSpace(previousSession) || !JournalProvesOwnership(previousSession)) return;
+
+            try
+            {
+                string queryOutput;
+                var scmPresent = QueryService(out queryOutput);
+                var serviceKey = ServiceKeyPresent();
+                var uninstallRegistry = UninstallRegistrationPresent();
+                var baselineInf = BaselinePawnIoInf(previousSession);
+                var currentInf = FindPawnIoOemInf();
+                var unexpectedInf = currentInf.Except(baselineInf, StringComparer.OrdinalIgnoreCase).ToArray();
+                var clean = !scmPresent && !serviceKey && !uninstallRegistry && unexpectedInf.Length == 0;
+                var state = "previousStatus=" + previousStatus +
+                    "; scmService=" + scmPresent +
+                    "; serviceKey=" + serviceKey +
+                    "; uninstallRegistry=" + uninstallRegistry +
+                    "; unexpectedDriverStoreInf=" + string.Join(",", unexpectedInf) +
+                    "; previousLog=" + (previousLog ?? "");
+
+                if (clean)
+                {
+                    PortableSessionLog.Write("Previous PawnIO cleanup verified after restart", "Session=" + previousSession + "; " + state);
+                    SessionRecoveryJournal.RecordCleanupForSession(previousSession, "driver", "PawnIO-2.2.0", "VERIFIED_AFTER_REBOOT",
+                        "First subsequent Inspector launch found no Inspector-added PawnIO SCM service, service key, uninstall registration, or DriverStore package. " + state);
+                    SessionRecoveryJournal.RecordCleanupForSession(previousSession, "service", "PawnIO", "VERIFIED_AFTER_REBOOT",
+                        "PawnIO service is absent after Windows restart. " + state);
+                }
+                else
+                {
+                    PortableSessionLog.Write("Previous PawnIO cleanup NOT verified after restart", "Session=" + previousSession + "; " + state + "; scQuery=" + OneLine(queryOutput));
+                    SessionRecoveryJournal.RecordCleanupForSession(previousSession, "driver", "PawnIO-2.2.0", "POST_REBOOT_RESIDUE",
+                        "A previous Inspector-owned PawnIO cleanup remains unresolved. Automatic deletion is not attempted here because the machine may have changed since the previous session. " + state);
+                }
+            }
+            catch (Exception ex)
+            {
+                PortableSessionLog.Write("Previous PawnIO post-restart verification exception", ex.ToString());
+                SessionRecoveryJournal.RecordCleanupForSession(previousSession, "driver", "PawnIO-2.2.0", "POST_REBOOT_VERIFY_FAILED", ex.ToString());
+            }
+        }
+
         public static void CleanupCurrentSessionServiceResidue()
         {
             var session = PortableSessionLog.SessionId;
@@ -39,11 +86,6 @@ namespace A2ZSysIns
                 PortableSessionLog.Write("PawnIO service residue cleanup", "Ownership proven; attempting SCM deletion for " + reason + ".");
                 PortableSessionLog.Write("PawnIO service state before delete", queryOutput);
 
-                // PawnIO may be loaded as TYPE 1 KERNEL_DRIVER and may not accept SERVICE_CONTROL_STOP.
-                // Sending `sc stop` to such a driver returns ERROR_INVALID_SERVICE_CONTROL (1052),
-                // which is expected and does not mean deletion failed. Do not repeatedly send an
-                // unsupported control. Delete the service registration and let Windows unload the
-                // non-stoppable kernel object at reboot when necessary.
                 string output;
                 int deleteExit = RunSc("delete PawnIO", out output);
                 PortableSessionLog.Write("PawnIO sc delete", "Exit=" + deleteExit + " " + output);
@@ -104,6 +146,56 @@ namespace A2ZSysIns
                 return false;
             }
             catch { return false; }
+        }
+
+        private static HashSet<string> BaselinePawnIoInf(string session)
+        {
+            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var detail = SessionRecoveryJournal.GetOwnedResourceDetail(session, "planned-driver-install", "PawnIO-2.2.0") ?? "";
+            var marker = "baselineInf=";
+            var index = detail.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (index < 0) return result;
+            var raw = detail.Substring(index + marker.Length);
+            var delimiter = raw.IndexOf('¦');
+            if (delimiter >= 0) raw = raw.Substring(0, delimiter);
+            foreach (var item in raw.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)) result.Add(item.Trim());
+            return result;
+        }
+
+        private static HashSet<string> FindPawnIoOemInf()
+        {
+            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                var infDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "INF");
+                foreach (var path in Directory.GetFiles(infDir, "oem*.inf"))
+                {
+                    try
+                    {
+                        var text = File.ReadAllText(path);
+                        if (text.IndexOf("PawnIO", StringComparison.OrdinalIgnoreCase) >= 0) result.Add(Path.GetFileName(path));
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+            return result;
+        }
+
+        private static bool UninstallRegistrationPresent()
+        {
+            return UninstallRegistrationPresent(RegistryView.Registry64) || UninstallRegistrationPresent(RegistryView.Registry32);
+        }
+
+        private static bool UninstallRegistrationPresent(RegistryView view)
+        {
+            try
+            {
+                using (var baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view))
+                using (var key = baseKey.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PawnIO"))
+                    return key != null;
+            }
+            catch { return true; }
         }
 
         private static bool ServiceKeyPresent()

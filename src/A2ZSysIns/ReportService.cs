@@ -15,38 +15,211 @@ namespace A2ZSysIns
     {
         public static FlowDocument Build(InspectionReport r)
         {
-            EvidenceEngine.Log(r, "Report preview generated", "FlowDocument built from saved inspection evidence.");
-            var d = new FlowDocument { PagePadding = new Thickness(55), FontFamily = new FontFamily("Segoe UI"), FontSize = 11, Foreground = new SolidColorBrush(Color.FromRgb(23, 43, 77)), Background = Brushes.White, ColumnGap = 0, ColumnWidth = double.PositiveInfinity };
-            d.Blocks.Add(new Paragraph(new Run("A2Z SYSTEM INSPECTOR")) { FontSize = 23, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Color.FromRgb(16, 42, 67)), Margin = new Thickness(0, 0, 0, 2) });
-            d.Blocks.Add(new Paragraph(new Run("Computer Health Inspection Report")) { FontSize = 14, Foreground = Brushes.DimGray, Margin = new Thickness(0, 0, 0, 18) });
-            d.Blocks.Add(Heading("Inspection summary"));
-            d.Blocks.Add(KeyValues(new[] { "Inspection ID", r.InspectionId, "Customer / reference", Empty(r.CustomerReference), "Job number", Empty(r.JobNumber), "Technician", Empty(r.Technician), "Date", r.CompletedAt.ToString("yyyy-MM-dd HH:mm"), "Reported problem", Empty(r.ReportedProblem) }));
-            var scoreText = r.OverallStatus;
-            d.Blocks.Add(new Paragraph(new Run(scoreText)) { FontSize = 20, FontWeight = FontWeights.SemiBold, Background = StatusBrush(r.OverallStatus), Padding = new Thickness(10), Margin = new Thickness(0, 16, 0, 12) });
-            d.Blocks.Add(Heading("Evidence assessments")); var scoreTable = NewTable("Measurement", "Assessment", "Evidence / limitation"); foreach (var s in r.Scores) Row(scoreTable, s.Category, s.Status, s.Reason); d.Blocks.Add(scoreTable);
-            d.Blocks.Add(Heading("Findings and recommendations")); if (r.Findings.Count == 0) d.Blocks.Add(new Paragraph(new Run("No significant findings were produced by the available checks."))); foreach (var f in r.Findings) d.Blocks.Add(new Paragraph(new Run(f.Severity + " — " + f.Title + "\n") { FontWeight = FontWeights.Bold }) { Inlines = { new Run(f.Explanation + " Recommendation: " + f.Recommendation) } });
-            d.Blocks.Add(new Paragraph(new Run("Technical details")) { BreakPageBefore = true, FontSize = 18, FontWeight = FontWeights.Bold });
-            d.Blocks.Add(Heading("System information")); var sys = NewTable("Item", "Value"); foreach (var x in r.System) Row(sys, x.Key, x.Value); d.Blocks.Add(sys);
-            d.Blocks.Add(Heading("Physical storage")); var drives = NewTable("Model", "Capacity", "Assessment", "Life indicator", "SMART threshold"); foreach (var x in r.Drives) Row(drives, x.Model, Collectors.FormatBytes(x.SizeBytes), x.Assessment, x.RemainingLifePercent.HasValue ? x.RemainingLifePercent.Value.ToString("0") + "%" : "Cannot measure", x.SmartStatus); d.Blocks.Add(drives);
-            d.Blocks.Add(Heading("Actual temperature sensors")); var sensors = NewTable("Hardware", "Sensor", "Current", "Minimum", "Maximum"); foreach (var x in r.Sensors.Where(EvidenceEngine.ActualTemperature)) Row(sensors, x.Hardware, x.Name, Num(x.Current, x.Unit), Num(x.Minimum, x.Unit), Num(x.Maximum, x.Unit)); d.Blocks.Add(sensors);
-            d.Blocks.Add(Heading("Measurement coverage")); var coverage = NewTable("Target", "Source", "Status", "Reason"); foreach (var x in r.Measurements) Row(coverage, x.Target, x.Source, x.Status, x.Reason); d.Blocks.Add(coverage);
-            d.Blocks.Add(Heading("Inspection limitations")); foreach (var x in r.Limitations) d.Blocks.Add(new Paragraph(new Run("• " + x)) { Margin = new Thickness(8, 2, 0, 2) });
-            d.Blocks.Add(Heading("Technician notes")); d.Blocks.Add(new Paragraph(new Run(Empty(r.TechnicianNotes) + "\n\n")));
-            d.Blocks.Add(new Paragraph(new Run("This is a read-only screening report, not a guarantee of future reliability. No repairs or modifications were performed by A2Z System Inspector.")) { FontSize = 9, Foreground = Brushes.DimGray, Margin = new Thickness(0, 20, 0, 0) });
+            EvidenceEngine.Log(r, "Report preview generated", "Professional customer + technician FlowDocument built from saved inspection evidence.");
+            var d = new FlowDocument
+            {
+                PagePadding = new Thickness(45),
+                FontFamily = new FontFamily("Segoe UI"),
+                FontSize = 10.5,
+                Foreground = new SolidColorBrush(Color.FromRgb(31, 41, 55)),
+                Background = Brushes.White,
+                ColumnGap = 0,
+                ColumnWidth = double.PositiveInfinity
+            };
+
+            d.Blocks.Add(new Paragraph(new Run("A2Z SYSTEM INSPECTOR"))
+            {
+                FontSize = 24,
+                FontWeight = FontWeights.Bold,
+                Foreground = new SolidColorBrush(Color.FromRgb(15, 45, 70)),
+                Margin = new Thickness(0, 0, 0, 1)
+            });
+            d.Blocks.Add(new Paragraph(new Run("Computer Health Inspection Report"))
+            {
+                FontSize = 14,
+                Foreground = Brushes.DimGray,
+                Margin = new Thickness(0, 0, 0, 14)
+            });
+
+            d.Blocks.Add(KeyValues(new[]
+            {
+                "Inspection ID", Empty(r.InspectionId),
+                "Customer / reference", Empty(r.CustomerReference),
+                "Job number", Empty(r.JobNumber),
+                "Technician", Empty(r.Technician),
+                "Inspection completed", r.CompletedAt == default(DateTime) ? "N/A" : r.CompletedAt.ToString("yyyy-MM-dd HH:mm"),
+                "Reported problem", Empty(r.ReportedProblem)
+            }));
+
+            d.Blocks.Add(new Paragraph(new Run(Empty(r.OverallStatus)))
+            {
+                FontSize = 18,
+                FontWeight = FontWeights.Bold,
+                Background = StatusBrush(r.OverallStatus),
+                Padding = new Thickness(12),
+                Margin = new Thickness(0, 15, 0, 8)
+            });
+
+            d.Blocks.Add(new Paragraph(new Run(Empty(r.CustomerSummary)))
+            {
+                FontSize = 12,
+                Margin = new Thickness(2, 0, 2, 14)
+            });
+
+            d.Blocks.Add(Heading("What you should do next"));
+            if (r.PriorityActions.Count == 0)
+                d.Blocks.Add(Plain("No immediate action was generated from the available evidence."));
+            else
+            {
+                var list = new List { MarkerStyle = TextMarkerStyle.Decimal, Margin = new Thickness(18, 2, 0, 8) };
+                foreach (var action in r.PriorityActions) list.ListItems.Add(new ListItem(new Paragraph(new Run(action)) { Margin = new Thickness(0, 2, 0, 2) }));
+                d.Blocks.Add(list);
+            }
+
+            d.Blocks.Add(Heading("Computer condition by area"));
+            var scoreTable = NewTable("Area", "Result", "What it means");
+            foreach (var s in r.Scores) Row(scoreTable, s.Category, s.Status, s.Reason);
+            d.Blocks.Add(scoreTable);
+
+            d.Blocks.Add(Heading("Important findings"));
+            var visibleFindings = r.Findings.Where(x => x.Severity != "Information").ToList();
+            if (visibleFindings.Count == 0)
+                d.Blocks.Add(Plain("No critical or attention-level finding was generated by the evidence collected."));
+            foreach (var f in visibleFindings)
+                d.Blocks.Add(FindingBlock(f));
+
+            var infoFindings = r.Findings.Where(x => x.Severity == "Information").ToList();
+            if (infoFindings.Count > 0)
+            {
+                d.Blocks.Add(Heading("Other observations"));
+                foreach (var f in infoFindings) d.Blocks.Add(FindingBlock(f));
+            }
+
+            d.Blocks.Add(Heading("What could not be tested"));
+            var unavailable = r.Measurements.Where(x => x.Status == "Unavailable" || x.Status == "Failed").ToList();
+            if (unavailable.Count == 0 && r.Limitations.Count == 0)
+                d.Blocks.Add(Plain("No collector explicitly reported an unavailable measurement. This still does not guarantee future reliability."));
+            else
+            {
+                foreach (var x in unavailable)
+                    d.Blocks.Add(Plain("• " + x.Target + " — " + x.Reason));
+                foreach (var x in r.Limitations.Distinct())
+                    d.Blocks.Add(Plain("• " + x));
+            }
+
+            d.Blocks.Add(new Paragraph(new Run("TECHNICAL EVIDENCE"))
+            {
+                BreakPageBefore = true,
+                FontSize = 19,
+                FontWeight = FontWeights.Bold,
+                Foreground = new SolidColorBrush(Color.FromRgb(15, 45, 70)),
+                Margin = new Thickness(0, 0, 0, 8)
+            });
+            d.Blocks.Add(Plain("The following section is intended for a technician. It preserves the raw measurement context behind the customer summary."));
+
+            d.Blocks.Add(Heading("System information"));
+            var sys = NewTable("Item", "Value");
+            foreach (var x in r.System) Row(sys, x.Key, x.Value);
+            d.Blocks.Add(sys);
+
+            d.Blocks.Add(Heading("Physical storage evidence"));
+            var drives = NewTable("Model", "Capacity", "Assessment", "Life indicator", "SMART threshold");
+            foreach (var x in r.Drives)
+                Row(drives, Empty(x.Model), Collectors.FormatBytes(x.SizeBytes), Empty(x.Assessment),
+                    x.RemainingLifePercent.HasValue ? x.RemainingLifePercent.Value.ToString("0") + "%" : "Cannot measure",
+                    Empty(x.SmartStatus));
+            d.Blocks.Add(drives);
+
+            d.Blocks.Add(Heading("CPU stress test"));
+            if (r.CpuStressTest == null)
+                d.Blocks.Add(Plain("Not run."));
+            else
+            {
+                var t = r.CpuStressTest;
+                d.Blocks.Add(KeyValues(new[]
+                {
+                    "Status", Empty(t.Status),
+                    "Duration", t.ActualDurationSeconds + " s",
+                    "Workers", t.LogicalWorkers.ToString(),
+                    "Pre-test temperature", Num(t.BaselineTemperatureC),
+                    "Maximum temperature", Num(t.MaximumTemperatureC),
+                    "Stop reason", Empty(t.StopReason)
+                }));
+            }
+
+            d.Blocks.Add(Heading("Actual temperature sensors"));
+            var sensors = NewTable("Hardware", "Sensor", "Current", "Minimum", "Maximum");
+            foreach (var x in r.Sensors.Where(EvidenceEngine.ActualTemperature))
+                Row(sensors, x.Hardware, x.Name, Num(x.Current, x.Unit), Num(x.Minimum, x.Unit), Num(x.Maximum, x.Unit));
+            d.Blocks.Add(sensors);
+
+            d.Blocks.Add(Heading("Windows event evidence"));
+            var events = NewTable("Event", "Count", "Latest", "Interpretation");
+            foreach (var x in r.Events)
+                Row(events, x.Source + " / " + x.EventId + " — " + x.Summary, x.Count.ToString(),
+                    x.Latest.HasValue ? x.Latest.Value.ToString("yyyy-MM-dd HH:mm") : "N/A", Empty(x.Cause));
+            d.Blocks.Add(events);
+
+            d.Blocks.Add(Heading("Measurement coverage"));
+            var coverage = NewTable("Target", "Source", "Status", "Reason");
+            foreach (var x in r.Measurements) Row(coverage, x.Target, x.Source, x.Status, x.Reason);
+            d.Blocks.Add(coverage);
+
+            d.Blocks.Add(Heading("Technician notes"));
+            d.Blocks.Add(Plain(Empty(r.TechnicianNotes)));
+
+            d.Blocks.Add(new Paragraph(new Run(
+                "Important: This report is a non-invasive screening based on evidence available during the inspection. " +
+                "A result of GOOD means no defined warning was detected in that check; it does not guarantee that the component cannot fail later. " +
+                "NOT TESTED / unavailable never means healthy. No repair should be inferred unless separately documented."))
+            {
+                FontSize = 9,
+                Foreground = Brushes.DimGray,
+                Margin = new Thickness(0, 20, 0, 0)
+            });
+
             return d;
         }
+
         public static void SaveJson(InspectionReport report, Window owner)
         {
-            var dialog = new SaveFileDialog { Filter = "JSON evidence (*.json)|*.json", FileName = "A2Z-Inspection-" + report.InspectionId + ".json" }; if (dialog.ShowDialog(owner) != true) return;
+            var dialog = new SaveFileDialog { Filter = "JSON evidence (*.json)|*.json", FileName = "A2Z-Inspection-" + report.InspectionId + ".json" };
+            if (dialog.ShowDialog(owner) != true) return;
             EvidenceEngine.Log(report, "JSON export", dialog.FileName);
             using (var fs = File.Create(dialog.FileName)) new DataContractJsonSerializer(typeof(InspectionReport)).WriteObject(fs, report);
         }
+
         public static void SaveText(InspectionReport r, Window owner)
         {
-            var dialog = new SaveFileDialog { Filter = "Text report (*.txt)|*.txt", FileName = "A2Z-Inspection-" + r.InspectionId + ".txt" }; if (dialog.ShowDialog(owner) != true) return;
+            var dialog = new SaveFileDialog { Filter = "Text report (*.txt)|*.txt", FileName = "A2Z-Inspection-" + r.InspectionId + ".txt" };
+            if (dialog.ShowDialog(owner) != true) return;
             EvidenceEngine.Log(r, "Text report export", dialog.FileName);
-            var b = new StringBuilder(); b.AppendLine("A2Z SYSTEM INSPECTOR").AppendLine("Inspection: " + r.InspectionId).AppendLine("Customer/reference: " + r.CustomerReference).AppendLine("Technician: " + r.Technician).AppendLine("Assessment: " + r.OverallStatus); foreach (var s in r.Scores) b.AppendLine(s.Category + ": " + s.Status + " — " + s.Reason); foreach (var f in r.Findings) b.AppendLine(f.Severity + ": " + f.Title + " — " + f.Explanation + " Recommendation: " + f.Recommendation); File.WriteAllText(dialog.FileName, b.ToString(), Encoding.UTF8);
+            var b = new StringBuilder();
+            b.AppendLine("A2Z SYSTEM INSPECTOR")
+                .AppendLine("Computer Health Inspection Report")
+                .AppendLine(new string('=', 70))
+                .AppendLine("Inspection: " + Empty(r.InspectionId))
+                .AppendLine("Customer/reference: " + Empty(r.CustomerReference))
+                .AppendLine("Technician: " + Empty(r.Technician))
+                .AppendLine("Assessment: " + Empty(r.OverallStatus))
+                .AppendLine()
+                .AppendLine("SUMMARY")
+                .AppendLine(Empty(r.CustomerSummary))
+                .AppendLine()
+                .AppendLine("PRIORITY ACTIONS");
+            foreach (var x in r.PriorityActions) b.AppendLine("- " + x);
+            b.AppendLine().AppendLine("COMPONENT RESULTS");
+            foreach (var s in r.Scores) b.AppendLine(s.Category + ": " + s.Status + " — " + s.Reason);
+            b.AppendLine().AppendLine("FINDINGS");
+            foreach (var f in r.Findings)
+                b.AppendLine(f.Severity + " / " + f.ActionLevel + " / confidence " + f.Confidence + ": " + f.Title +
+                    " — " + f.Explanation + " Recommendation: " + f.Recommendation + " Evidence: " + f.Evidence);
+            b.AppendLine().AppendLine("UNAVAILABLE / LIMITATIONS");
+            foreach (var x in r.Measurements.Where(x => x.Status == "Unavailable" || x.Status == "Failed")) b.AppendLine("- " + x.Target + ": " + x.Reason);
+            foreach (var x in r.Limitations.Distinct()) b.AppendLine("- " + x);
+            File.WriteAllText(dialog.FileName, b.ToString(), Encoding.UTF8);
         }
+
         public static void SaveDiagnosticLog(InspectionReport r, Window owner)
         {
             var dialog = new SaveFileDialog { Filter = "Diagnostic log (*.log)|*.log|Text file (*.txt)|*.txt", FileName = "A2Z-Inspection-" + r.InspectionId + "-diagnostic.log" };
@@ -63,17 +236,59 @@ namespace A2ZSysIns
                 b.AppendLine(x.AtUtc.ToString("o") + "  " + x.Action).AppendLine(x.Response ?? "(no response)").AppendLine(new string('-', 78));
             File.WriteAllText(dialog.FileName, b.ToString(), Encoding.UTF8);
         }
+
         public static void Print(FlowDocument source, Window owner)
         {
-            var dialog = new PrintDialog(); if (dialog.ShowDialog() != true) return; source.PageHeight = dialog.PrintableAreaHeight; source.PageWidth = dialog.PrintableAreaWidth; source.ColumnWidth = dialog.PrintableAreaWidth; dialog.PrintDocument(((IDocumentPaginatorSource)source).DocumentPaginator, "A2Z System Inspector Report");
+            var dialog = new PrintDialog();
+            if (dialog.ShowDialog() != true) return;
+            source.PageHeight = dialog.PrintableAreaHeight;
+            source.PageWidth = dialog.PrintableAreaWidth;
+            source.ColumnWidth = dialog.PrintableAreaWidth;
+            dialog.PrintDocument(((IDocumentPaginatorSource)source).DocumentPaginator, "A2Z System Inspector Report");
         }
-        private static Paragraph Heading(string text) => new Paragraph(new Run(text)) { FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(Color.FromRgb(16, 42, 67)), Margin = new Thickness(0, 14, 0, 6) };
+
+        private static Block FindingBlock(Finding f)
+        {
+            var p = new Paragraph { Margin = new Thickness(0, 4, 0, 8), Padding = new Thickness(9), Background = FindingBrush(f.Severity) };
+            p.Inlines.Add(new Run(f.Severity.ToUpperInvariant() + " — " + f.Title + "\n") { FontWeight = FontWeights.Bold, FontSize = 11.5 });
+            p.Inlines.Add(new Run(f.Explanation + "\n"));
+            p.Inlines.Add(new Run("Action: ") { FontWeight = FontWeights.SemiBold });
+            p.Inlines.Add(new Run(f.Recommendation + "\n"));
+            p.Inlines.Add(new Run("Confidence: " + Empty(f.Confidence) + " • Priority: " + Empty(f.ActionLevel)) { FontSize = 9, Foreground = Brushes.DimGray });
+            return p;
+        }
+
+        private static Paragraph Heading(string text) => new Paragraph(new Run(text))
+        {
+            FontSize = 15,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Color.FromRgb(15, 45, 70)),
+            Margin = new Thickness(0, 14, 0, 6)
+        };
+
+        private static Paragraph Plain(string text) => new Paragraph(new Run(Empty(text))) { Margin = new Thickness(2, 2, 2, 5) };
         private static Table KeyValues(string[] values) { var t = NewTable("Item", "Value"); for (var i = 0; i < values.Length; i += 2) Row(t, values[i], values[i + 1]); return t; }
         private static Table NewTable(params string[] headers) { var t = new Table { CellSpacing = 0 }; foreach (var h in headers) t.Columns.Add(new TableColumn()); var g = new TableRowGroup(); t.RowGroups.Add(g); var row = new TableRow { Background = new SolidColorBrush(Color.FromRgb(230, 238, 246)), FontWeight = FontWeights.Bold }; foreach (var h in headers) row.Cells.Add(Cell(h)); g.Rows.Add(row); return t; }
         private static void Row(Table table, params string[] values) { var row = new TableRow(); foreach (var v in values) row.Cells.Add(Cell(Empty(v))); table.RowGroups[0].Rows.Add(row); }
         private static TableCell Cell(string value) => new TableCell(new Paragraph(new Run(value)) { Margin = new Thickness(0) }) { Padding = new Thickness(5), BorderBrush = Brushes.LightGray, BorderThickness = new Thickness(0, 0, 0, 1) };
         private static string Empty(string value) => string.IsNullOrWhiteSpace(value) ? "N/A" : value;
         private static string Num(float? n, string unit) => n.HasValue ? n.Value.ToString("0.0") + " " + unit : "N/A";
-        private static Brush StatusBrush(string s) => s == "Healthy" ? Brushes.LightGreen : s == "Attention" ? Brushes.LightGoldenrodYellow : s == "Critical" ? Brushes.LightCoral : Brushes.PeachPuff;
+        private static string Num(double? n) => n.HasValue ? n.Value.ToString("0.0") + " °C" : "N/A";
+
+        private static Brush StatusBrush(string s)
+        {
+            s = s ?? "";
+            if (s.StartsWith("CRITICAL", StringComparison.OrdinalIgnoreCase)) return new SolidColorBrush(Color.FromRgb(255, 210, 210));
+            if (s.StartsWith("ATTENTION", StringComparison.OrdinalIgnoreCase)) return new SolidColorBrush(Color.FromRgb(255, 236, 184));
+            if (s.StartsWith("NO CRITICAL", StringComparison.OrdinalIgnoreCase)) return new SolidColorBrush(Color.FromRgb(214, 242, 220));
+            return new SolidColorBrush(Color.FromRgb(230, 238, 246));
+        }
+
+        private static Brush FindingBrush(string severity)
+        {
+            if (string.Equals(severity, "Critical", StringComparison.OrdinalIgnoreCase)) return new SolidColorBrush(Color.FromRgb(255, 229, 229));
+            if (string.Equals(severity, "Attention", StringComparison.OrdinalIgnoreCase)) return new SolidColorBrush(Color.FromRgb(255, 246, 217));
+            return new SolidColorBrush(Color.FromRgb(239, 245, 250));
+        }
     }
 }
