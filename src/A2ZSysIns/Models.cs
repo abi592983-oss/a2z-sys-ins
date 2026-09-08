@@ -17,8 +17,8 @@ namespace A2ZSysIns
     [DataContract]
     public sealed class InspectionReport
     {
-        [DataMember] public string SchemaVersion = "2.3";
-        [DataMember] public string RuleSetVersion = "2.3-failure-focused";
+        [DataMember] public string SchemaVersion = "2.4";
+        [DataMember] public string RuleSetVersion = "2.4-correlated-diagnostics";
         [DataMember] public List<Measurement> Measurements = new List<Measurement>();
         [DataMember] public PersistentDiagnosticLog DiagnosticLog = new PersistentDiagnosticLog();
         [DataMember] public List<VolumeRecord> Volumes = new List<VolumeRecord>();
@@ -63,6 +63,8 @@ namespace A2ZSysIns
         [DataMember] public double? RemainingLifePercent;
         [DataMember] public string LifeMeaning = "Not measured; no validated life attribute";
         [DataMember] public string Assessment = "Not assessed";
+        [DataMember] public string LinkCurrent;
+        [DataMember] public string LinkMaximum;
         [DataMember] public Dictionary<string, long> Attributes = new Dictionary<string, long>();
     }
     [DataContract] public sealed class SensorRecord
