@@ -2,7 +2,6 @@ using Microsoft.Win32;
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Threading;
 
 namespace A2ZSysIns
@@ -29,35 +28,56 @@ namespace A2ZSysIns
         {
             try
             {
-                if (!ServiceKeyPresent() && !ScServiceExists())
+                string queryOutput;
+                var exists = QueryService(out queryOutput);
+                if (!ServiceKeyPresent() && !exists)
                 {
                     PortableSessionLog.Write("PawnIO service residue cleanup", "No PawnIO service residue detected for " + reason + ".");
                     return;
                 }
 
-                PortableSessionLog.Write("PawnIO service residue cleanup", "Ownership proven; attempting SCM cleanup for " + reason + ".");
+                PortableSessionLog.Write("PawnIO service residue cleanup", "Ownership proven; attempting SCM deletion for " + reason + ".");
+                PortableSessionLog.Write("PawnIO service state before delete", queryOutput);
 
+                // PawnIO may be loaded as TYPE 1 KERNEL_DRIVER and may not accept SERVICE_CONTROL_STOP.
+                // Sending `sc stop` to such a driver returns ERROR_INVALID_SERVICE_CONTROL (1052),
+                // which is expected and does not mean deletion failed. Do not repeatedly send an
+                // unsupported control. Delete the service registration and let Windows unload the
+                // non-stoppable kernel object at reboot when necessary.
                 string output;
-                RunSc("stop PawnIO", out output);
-                PortableSessionLog.Write("PawnIO sc stop", output);
-
                 int deleteExit = RunSc("delete PawnIO", out output);
                 PortableSessionLog.Write("PawnIO sc delete", "Exit=" + deleteExit + " " + output);
 
                 for (var i = 0; i < 20; i++)
                 {
-                    if (!ScServiceExists() && !ServiceKeyPresent())
+                    if (!QueryService(out queryOutput) && !ServiceKeyPresent())
                     {
-                        PortableSessionLog.RecordCleanup("service", "PawnIO", "VERIFIED", "SCM service and service registry key absent after ownership-gated cleanup.");
-                        SessionRecoveryJournal.RecordCleanup("service", "PawnIO", "VERIFIED", "SCM service and service registry key absent after ownership-gated cleanup.");
+                        PortableSessionLog.RecordCleanup("service", "PawnIO", "VERIFIED", "SCM service and service registry key absent after ownership-gated deletion.");
+                        SessionRecoveryJournal.RecordCleanup("service", "PawnIO", "VERIFIED", "SCM service and service registry key absent after ownership-gated deletion.");
                         return;
                     }
                     Thread.Sleep(250);
                 }
 
-                var state = "scExists=" + ScServiceExists() + "; serviceKey=" + ServiceKeyPresent();
-                PortableSessionLog.RecordCleanup("service", "PawnIO", "PENDING_OR_RESIDUE", state + ". Windows may still have the service marked for deletion until handles close or the system restarts.");
-                SessionRecoveryJournal.RecordCleanup("service", "PawnIO", "PENDING_OR_RESIDUE", state);
+                var stillExists = QueryService(out queryOutput);
+                var keyPresent = ServiceKeyPresent();
+                var runningKernelDriver = stillExists &&
+                    queryOutput.IndexOf("KERNEL_DRIVER", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                    queryOutput.IndexOf("RUNNING", StringComparison.OrdinalIgnoreCase) >= 0;
+
+                var state = "scExists=" + stillExists + "; serviceKey=" + keyPresent + "; query=" + OneLine(queryOutput);
+                if (runningKernelDriver)
+                {
+                    PortableSessionLog.RecordCleanup("service", "PawnIO", "REBOOT_REQUIRED",
+                        state + ". PawnIO remains loaded as a non-stoppable kernel driver; service deletion has been requested and final unload requires Windows restart.");
+                    SessionRecoveryJournal.RecordCleanup("service", "PawnIO", "REBOOT_REQUIRED", state);
+                }
+                else
+                {
+                    PortableSessionLog.RecordCleanup("service", "PawnIO", "PENDING_OR_RESIDUE",
+                        state + ". Windows may still have the service marked for deletion until handles close or the system restarts.");
+                    SessionRecoveryJournal.RecordCleanup("service", "PawnIO", "PENDING_OR_RESIDUE", state);
+                }
             }
             catch (Exception ex)
             {
@@ -96,13 +116,17 @@ namespace A2ZSysIns
             catch { return true; }
         }
 
-        private static bool ScServiceExists()
+        private static bool QueryService(out string output)
         {
-            string output;
             var exit = RunSc("query PawnIO", out output);
             if (exit == 0) return true;
             return output.IndexOf("1060", StringComparison.OrdinalIgnoreCase) < 0 &&
                    output.IndexOf("does not exist", StringComparison.OrdinalIgnoreCase) < 0;
+        }
+
+        private static string OneLine(string value)
+        {
+            return (value ?? "").Replace("\r", " ").Replace("\n", " ").Trim();
         }
 
         private static int RunSc(string args, out string output)
