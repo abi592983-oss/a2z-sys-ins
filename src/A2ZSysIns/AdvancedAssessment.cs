@@ -10,6 +10,7 @@ namespace A2ZSysIns
         {
             AssessWhea(r);
             AssessStorageStack(r);
+            AssessPnP(r);
             AssessStorageLinks(r);
             AssessFanCorrelation(r);
             AssessStressPerformance(r);
@@ -35,6 +36,16 @@ namespace A2ZSysIns
                 var repeated = e.Count > 2;
                 r.Scores.Add(new CategoryScore { Category = "Storage stack — " + e.Source + " " + e.EventId, Score = null, Status = repeated ? "ATTENTION" : "INFORMATION", Reason = e.Count + " matching occurrence(s) in 30 days; not automatically a failed drive." });
                 if (repeated) AddFinding(r, "Attention", "Storage", "Repeated Windows storage-stack event", "Windows recorded the same storage-stack event signature " + e.Count + " times. Repetition can reveal controller, cable, enclosure, driver or device-path instability that SMART may not expose.", "Correlate this event with the affected device, SMART evidence and customer symptoms before replacing hardware.", e.Signature, "Moderate", "Recommended");
+            }
+        }
+
+        private static void AssessPnP(InspectionReport r)
+        {
+            foreach (var e in r.Events.Where(x => (x.Signature ?? "").StartsWith("PnP:", StringComparison.OrdinalIgnoreCase)))
+            {
+                var repeated = e.Count > 2;
+                r.Scores.Add(new CategoryScore { Category = "PnP — " + e.Source + " " + e.EventId, Score = null, Status = repeated ? "ATTENTION" : "INFORMATION", Reason = e.Count + " matching warning/error occurrence(s) in 30 days." });
+                if (repeated) AddFinding(r, "Attention", "Device stability", "Repeated Plug and Play device warning/error", "Windows recorded the same Plug and Play warning/error signature " + e.Count + " times. Repeated enumeration or device-state failures can indicate a device, connector, controller or driver problem, but the event alone does not identify which physical part should be replaced.", "Correlate the device instance from the raw event with Device Manager, symptoms and other hardware evidence.", e.Signature, "Moderate", "Recommended");
             }
         }
 
@@ -87,8 +98,7 @@ namespace A2ZSysIns
             var collapsed = full.Count(x => x.AverageCoreClockMHz.Value < reference * 0.50);
             if (collapsed >= 5)
             {
-                var peak = full.Max(x => x.TemperatureC);
-                var thermal = peak >= 85;
+                var peak = full.Max(x => x.TemperatureC); var thermal = peak >= 85;
                 r.Scores.Add(new CategoryScore { Category = "CPU loaded clock behavior", Score = null, Status = "ATTENTION", Reason = collapsed + " high-load sample(s) fell below 50% of the Windows-reported reference clock; peak temperature " + peak.ToString("0.0") + " °C." });
                 AddFinding(r, "Attention", "CPU performance", thermal ? "CPU clock collapse observed under hot sustained load" : "CPU clock collapse observed under sustained load", "During the 100% target stage, at least five samples showed observed CPU load above 80% while average core clock was below half of the Windows-reported reference clock. " + (thermal ? "The same period was also thermally hot, so thermal limiting is plausible but not proven." : "Temperature alone does not explain the limiting; power, firmware or platform limits remain possible."), "Review effective clocks with a second known-good tool and correlate with thermal/power-limit indicators before diagnosing the CPU or cooling system.", "Integrated stress-test load + clock + temperature samples", "Moderate", "Recommended");
             }
