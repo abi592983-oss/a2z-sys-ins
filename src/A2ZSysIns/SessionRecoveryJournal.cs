@@ -73,9 +73,10 @@ namespace A2ZSysIns
                 var lines = ReadEntries();
                 var start = lines.LastOrDefault(x => x[1] == "SESSION_START");
                 if (start == null) return false;
-                sessionId = start[2];
-                var completed = lines.Any(x => x[1] == "SESSION_COMPLETE" && x[2] == sessionId);
-                portableLog = lines.LastOrDefault(x => x[1] == "PORTABLE_LOG" && x[2] == sessionId)?[3];
+                var currentSession = start[2];
+                sessionId = currentSession;
+                var completed = lines.Any(x => x[1] == "SESSION_COMPLETE" && x[2] == currentSession);
+                portableLog = lines.LastOrDefault(x => x[1] == "PORTABLE_LOG" && x[2] == currentSession)?[3];
                 return !completed;
             }
             catch { return false; }
