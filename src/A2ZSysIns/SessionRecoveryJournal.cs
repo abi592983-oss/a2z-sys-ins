@@ -123,23 +123,18 @@ namespace A2ZSysIns
                     var owned = related.Any(x => x[1] == "OWNED_RESOURCE" && x[3].IndexOf("driver¦PawnIO-2.2.0", StringComparison.OrdinalIgnoreCase) >= 0);
                     if (!owned) continue;
 
-                    var cleanup = related.Where(x => x[1] == "CLEANUP_RESOURCE" &&
-                        (x[3].IndexOf("service¦PawnIO¦", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                         x[3].IndexOf("driver¦PawnIO-2.2.0¦", StringComparison.OrdinalIgnoreCase) >= 0)).ToList();
-                    var closed = cleanup.Any(x =>
-                        x[3].IndexOf("¦VERIFIED_AFTER_REBOOT¦", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                        x[3].IndexOf("¦VERIFIED¦", StringComparison.OrdinalIgnoreCase) >= 0);
-                    if (closed) continue;
+                    var cleanup = related.Where(x => x[1] == "CLEANUP_RESOURCE").ToList();
+                    var driverLast = cleanup.LastOrDefault(x => x[3].StartsWith("driver¦PawnIO-2.2.0¦", StringComparison.OrdinalIgnoreCase));
+                    var serviceLast = cleanup.LastOrDefault(x => x[3].StartsWith("service¦PawnIO¦", StringComparison.OrdinalIgnoreCase));
+                    var candidates = new[] { driverLast, serviceLast }.Where(x => x != null).ToList();
+                    if (candidates.Count == 0) continue;
 
-                    var last = cleanup.LastOrDefault();
-                    if (last == null) continue;
-                    var detailParts = last[3].Split('¦');
-                    var lastStatus = detailParts.Length >= 3 ? detailParts[2] : "UNKNOWN";
-                    if (lastStatus != "REBOOT_REQUIRED" && lastStatus != "PENDING_OR_RESIDUE" && lastStatus != "RESIDUE_DETECTED" && lastStatus != "FAILED")
-                        continue;
+                    var unresolved = candidates.Select(x => new { Entry = x, Status = CleanupStatus(x[3]) })
+                        .FirstOrDefault(x => IsUnresolvedCleanupStatus(x.Status));
+                    if (unresolved == null) continue;
 
                     sessionId = candidate;
-                    status = lastStatus;
+                    status = unresolved.Status;
                     portableLog = related.LastOrDefault(x => x[1] == "PORTABLE_LOG")?[3];
                     return true;
                 }
@@ -174,6 +169,18 @@ namespace A2ZSysIns
                 return false;
             }
             catch { return false; }
+        }
+
+        private static string CleanupStatus(string detail)
+        {
+            var parts = (detail ?? "").Split('¦');
+            return parts.Length >= 3 ? parts[2] : "UNKNOWN";
+        }
+
+        private static bool IsUnresolvedCleanupStatus(string value)
+        {
+            return value == "REBOOT_REQUIRED" || value == "PENDING_OR_RESIDUE" || value == "RESIDUE_DETECTED" ||
+                   value == "FAILED" || value == "POST_REBOOT_RESIDUE" || value == "POST_REBOOT_VERIFY_FAILED";
         }
 
         private static List<string[]> ReadEntries()
