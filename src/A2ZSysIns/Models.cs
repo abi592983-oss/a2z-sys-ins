@@ -4,13 +4,23 @@ using System.Runtime.Serialization;
 
 namespace A2ZSysIns
 {
+    [CollectionDataContract]
+    public sealed class PersistentDiagnosticLog : List<LogEntry>
+    {
+        public new void Add(LogEntry item)
+        {
+            base.Add(item);
+            if (item != null) PortableSessionLog.Write(item.Action, item.Response);
+        }
+    }
+
     [DataContract]
     public sealed class InspectionReport
     {
         [DataMember] public string SchemaVersion = "2.2";
         [DataMember] public string RuleSetVersion = "2.2-safe-stress";
         [DataMember] public List<Measurement> Measurements = new List<Measurement>();
-        [DataMember] public List<LogEntry> DiagnosticLog = new List<LogEntry>();
+        [DataMember] public PersistentDiagnosticLog DiagnosticLog = new PersistentDiagnosticLog();
         [DataMember] public List<VolumeRecord> Volumes = new List<VolumeRecord>();
         [DataMember] public double? MemoryUsedPercent;
         [DataMember] public bool IsAdministrator;
