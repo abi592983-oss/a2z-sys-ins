@@ -34,6 +34,14 @@ namespace A2ZSysIns
             }
         }
 
+        public static void WriteForSession(string sessionId, string action, string detail)
+        {
+            lock (Sync)
+            {
+                try { Append(action, sessionId ?? "NO_SESSION", detail ?? ""); } catch { }
+            }
+        }
+
         public static void RecordOwnedResource(string kind, string id, string detail)
         {
             Write("OWNED_RESOURCE", kind + "|" + id + "|" + (detail ?? ""));
@@ -42,6 +50,11 @@ namespace A2ZSysIns
         public static void RecordCleanup(string kind, string id, string status, string detail)
         {
             Write("CLEANUP_RESOURCE", kind + "|" + id + "|" + status + "|" + (detail ?? ""));
+        }
+
+        public static void RecordCleanupForSession(string sessionId, string kind, string id, string status, string detail)
+        {
+            WriteForSession(sessionId, "CLEANUP_RESOURCE", kind + "|" + id + "|" + status + "|" + (detail ?? ""));
         }
 
         public static void Complete()
@@ -82,6 +95,48 @@ namespace A2ZSysIns
             catch { return false; }
         }
 
+        public static bool TryGetUnresolvedPawnIoCleanup(out string sessionId, out string status, out string portableLog)
+        {
+            sessionId = null;
+            status = null;
+            portableLog = null;
+            try
+            {
+                if (!File.Exists(JournalPath)) return false;
+                var entries = ReadEntries();
+                var sessions = entries.Where(x => x[1] == "SESSION_START").Select(x => x[2]).Distinct().Reverse();
+                foreach (var candidate in sessions)
+                {
+                    if (candidate == _sessionId) continue;
+                    var related = entries.Where(x => x[2] == candidate).ToList();
+                    var owned = related.Any(x => x[1] == "OWNED_RESOURCE" && x[3].IndexOf("driver¦PawnIO-2.2.0", StringComparison.OrdinalIgnoreCase) >= 0);
+                    if (!owned) continue;
+
+                    var cleanup = related.Where(x => x[1] == "CLEANUP_RESOURCE" &&
+                        (x[3].IndexOf("service¦PawnIO¦", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                         x[3].IndexOf("driver¦PawnIO-2.2.0¦", StringComparison.OrdinalIgnoreCase) >= 0)).ToList();
+                    var closed = cleanup.Any(x =>
+                        x[3].IndexOf("¦VERIFIED_AFTER_REBOOT¦", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        x[3].IndexOf("¦VERIFIED¦", StringComparison.OrdinalIgnoreCase) >= 0);
+                    if (closed) continue;
+
+                    var last = cleanup.LastOrDefault();
+                    if (last == null) continue;
+                    var detailParts = last[3].Split('¦');
+                    var lastStatus = detailParts.Length >= 3 ? detailParts[2] : "UNKNOWN";
+                    if (lastStatus != "REBOOT_REQUIRED" && lastStatus != "PENDING_OR_RESIDUE" && lastStatus != "RESIDUE_DETECTED" && lastStatus != "FAILED")
+                        continue;
+
+                    sessionId = candidate;
+                    status = lastStatus;
+                    portableLog = related.LastOrDefault(x => x[1] == "PORTABLE_LOG")?[3];
+                    return true;
+                }
+                return false;
+            }
+            catch { return false; }
+        }
+
         public static bool PreviousIncompleteSessionProvesPawnIoOwnership(out string sessionId)
         {
             sessionId = null;
@@ -96,7 +151,9 @@ namespace A2ZSysIns
                     var related = entries.Where(x => x[2] == candidate).ToList();
                     var completed = related.Any(x => x[1] == "SESSION_COMPLETE");
                     var owned = related.Any(x => x[1] == "OWNED_RESOURCE" && x[3].IndexOf("driver¦PawnIO-2.2.0", StringComparison.OrdinalIgnoreCase) >= 0);
-                    var verified = related.Any(x => x[1] == "CLEANUP_RESOURCE" && x[3].IndexOf("driver¦PawnIO-2.2.0¦VERIFIED", StringComparison.OrdinalIgnoreCase) >= 0);
+                    var verified = related.Any(x => x[1] == "CLEANUP_RESOURCE" &&
+                        (x[3].IndexOf("driver¦PawnIO-2.2.0¦VERIFIED", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                         x[3].IndexOf("service¦PawnIO¦VERIFIED", StringComparison.OrdinalIgnoreCase) >= 0));
                     if (!completed && owned && !verified)
                     {
                         sessionId = candidate;
