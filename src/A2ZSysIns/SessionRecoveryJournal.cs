@@ -1,0 +1,102 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+
+namespace A2ZSysIns
+{
+    internal static class SessionRecoveryJournal
+    {
+        private static readonly object Sync = new object();
+        private static readonly string JournalDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "A2Z-System-Inspector");
+        private static readonly string JournalPath = Path.Combine(JournalDirectory, "recovery-journal.log");
+        private static string _sessionId;
+
+        public static string PathName => JournalPath;
+
+        public static void Begin(string sessionId, string portableLogPath)
+        {
+            lock (Sync)
+            {
+                Directory.CreateDirectory(JournalDirectory);
+                _sessionId = sessionId;
+                Append("SESSION_START", sessionId, DateTime.UtcNow.ToString("o"));
+                Append("PORTABLE_LOG", sessionId, portableLogPath ?? "");
+            }
+        }
+
+        public static void Write(string action, string detail)
+        {
+            lock (Sync)
+            {
+                try { Append(action, _sessionId ?? "NO_SESSION", detail ?? ""); } catch { }
+            }
+        }
+
+        public static void RecordOwnedResource(string kind, string id, string detail)
+        {
+            Write("OWNED_RESOURCE", kind + "|" + id + "|" + (detail ?? ""));
+        }
+
+        public static void RecordCleanup(string kind, string id, string status, string detail)
+        {
+            Write("CLEANUP_RESOURCE", kind + "|" + id + "|" + status + "|" + (detail ?? ""));
+        }
+
+        public static void Complete()
+        {
+            Write("SESSION_COMPLETE", DateTime.UtcNow.ToString("o"));
+        }
+
+        public static string LastKnownPortableLog()
+        {
+            try
+            {
+                if (!File.Exists(JournalPath)) return null;
+                return File.ReadLines(JournalPath).Reverse()
+                    .Select(Parse)
+                    .Where(x => x != null && x.Length >= 4 && x[1] == "PORTABLE_LOG")
+                    .Select(x => x[3])
+                    .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+            }
+            catch { return null; }
+        }
+
+        public static bool HasIncompleteSession(out string sessionId, out string portableLog)
+        {
+            sessionId = null;
+            portableLog = null;
+            try
+            {
+                if (!File.Exists(JournalPath)) return false;
+                var lines = File.ReadAllLines(JournalPath).Select(Parse).Where(x => x != null && x.Length >= 4).ToList();
+                var start = lines.LastOrDefault(x => x[1] == "SESSION_START");
+                if (start == null) return false;
+                sessionId = start[2];
+                var completed = lines.Any(x => x[1] == "SESSION_COMPLETE" && x[2] == sessionId);
+                portableLog = lines.LastOrDefault(x => x[1] == "PORTABLE_LOG" && x[2] == sessionId)?[3];
+                return !completed;
+            }
+            catch { return false; }
+        }
+
+        private static void Append(string type, string session, string detail)
+        {
+            Directory.CreateDirectory(JournalDirectory);
+            var line = DateTime.UtcNow.ToString("o") + "|" + Clean(type) + "|" + Clean(session) + "|" + Clean(detail);
+            File.AppendAllText(JournalPath, line + Environment.NewLine, new UTF8Encoding(false));
+        }
+
+        private static string[] Parse(string line)
+        {
+            if (string.IsNullOrWhiteSpace(line)) return null;
+            return line.Split(new[] { '|' }, 4);
+        }
+
+        private static string Clean(string value)
+        {
+            return (value ?? "").Replace("\r", "\\r").Replace("\n", "\\n").Replace("|", "¦");
+        }
+    }
+}
