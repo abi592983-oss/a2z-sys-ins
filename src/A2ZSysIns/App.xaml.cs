@@ -56,6 +56,10 @@ namespace A2ZSysIns
             PortableSessionLog.Initialize(root);
             PortableSessionLog.Write("Application startup", "Portable diagnostic flight recorder initialized. Local recovery journal=" + SessionRecoveryJournal.PathName);
             if (incomplete) PortableSessionLog.Write("Previous incomplete session detected", "Session=" + previousSession + "; previousLog=" + previousLog);
+
+            try { DriverAccessManager.RecoverPreviousOwnedPawnIo(); }
+            catch (Exception ex) { PortableSessionLog.Write("Previous-session PawnIO recovery exception", ex.ToString()); }
+
             AppDomain.CurrentDomain.UnhandledException += (s, x) => PortableSessionLog.Write("Unhandled AppDomain exception", Convert.ToString(x.ExceptionObject));
             DispatcherUnhandledException += (s, x) => PortableSessionLog.Write("Unhandled dispatcher exception", x.Exception == null ? "Unknown" : x.Exception.ToString());
             base.OnStartup(e);
