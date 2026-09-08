@@ -26,10 +26,11 @@ namespace A2ZSysIns
             var timer = Stopwatch.StartNew();
             try
             {
-                using (var temperatures = new CpuTemperatureSession())
+                using (var sensors = new CpuSensorSession())
                 {
                     progress.Report("CPU stress preflight: checking temperature sensor...");
-                    var baseline = temperatures.ReadMaximumCpuTemperature();
+                    var baselineMetrics = sensors.Read();
+                    var baseline = baselineMetrics.MaximumTemperatureC;
                     if (!baseline.HasValue)
                     {
                         result.Status = "Refused";
@@ -57,15 +58,24 @@ namespace A2ZSysIns
                                 {
                                     cancellation.ThrowIfCancellationRequested();
                                     await Task.Delay(1000, cancellation);
-                                    var temperature = temperatures.ReadMaximumCpuTemperature();
-                                    if (!temperature.HasValue) throw new InvalidOperationException("CPU temperature monitoring was lost; load stopped.");
-                                    result.MaximumTemperatureC = Math.Max(result.MaximumTemperatureC ?? temperature.Value, temperature.Value);
-                                    result.Samples.Add(new CpuStressSample { ElapsedSeconds = (int)timer.Elapsed.TotalSeconds,
-                                        TargetLoadPercent = stage.Item1, TemperatureC = temperature.Value });
-                                    EvidenceEngine.Log(report, "CPU stress sample", JsonConvert.SerializeObject(result.Samples.Last()));
-                                    progress.Report("CPU stress: " + stage.Item1 + "% target • " + temperature.Value.ToString("0.0") +
-                                        " °C • " + Math.Min(60, (int)timer.Elapsed.TotalSeconds) + "/60 s");
-                                    if (temperature.Value >= MaximumSafeTemperatureC)
+                                    var metrics = sensors.Read();
+                                    if (!metrics.MaximumTemperatureC.HasValue) throw new InvalidOperationException("CPU temperature monitoring was lost; load stopped.");
+                                    var temperature = metrics.MaximumTemperatureC.Value;
+                                    result.MaximumTemperatureC = Math.Max(result.MaximumTemperatureC ?? temperature, temperature);
+                                    var sample = new CpuStressSample {
+                                        ElapsedSeconds = (int)timer.Elapsed.TotalSeconds,
+                                        TargetLoadPercent = stage.Item1,
+                                        TemperatureC = temperature,
+                                        ObservedCpuLoadPercent = metrics.CpuLoadPercent,
+                                        AverageCoreClockMHz = metrics.AverageCoreClockMHz,
+                                        MaximumCoreClockMHz = metrics.MaximumCoreClockMHz,
+                                        FanRpm = metrics.FanRpm
+                                    };
+                                    result.Samples.Add(sample);
+                                    EvidenceEngine.Log(report, "CPU stress sample", JsonConvert.SerializeObject(sample));
+                                    var clock = metrics.AverageCoreClockMHz.HasValue ? " • " + metrics.AverageCoreClockMHz.Value.ToString("0") + " MHz avg" : " • clock N/A";
+                                    progress.Report("CPU stress: " + stage.Item1 + "% target • " + temperature.ToString("0.0") + " °C" + clock + " • " + Math.Min(60, (int)timer.Elapsed.TotalSeconds) + "/60 s");
+                                    if (temperature >= MaximumSafeTemperatureC)
                                         throw new ThermalAbortException("CPU reached the " + MaximumSafeTemperatureC.ToString("0") + " C safety limit.");
                                 }
                             }
@@ -131,44 +141,63 @@ namespace A2ZSysIns
             }, token)).ToArray();
         }
 
-        private sealed class CpuTemperatureSession : IDisposable
+        private sealed class CpuMetrics
+        {
+            public double? MaximumTemperatureC;
+            public double? CpuLoadPercent;
+            public double? AverageCoreClockMHz;
+            public double? MaximumCoreClockMHz;
+            public double? FanRpm;
+        }
+
+        private sealed class CpuSensorSession : IDisposable
         {
             private readonly object _computer;
             private readonly Type _type;
-            public CpuTemperatureSession()
+            public CpuSensorSession()
             {
                 var asm = Assembly.Load("LibreHardwareMonitorLib");
                 _type = asm.GetType("LibreHardwareMonitor.Hardware.Computer", true);
                 _computer = Activator.CreateInstance(_type);
                 _type.GetProperty("IsCpuEnabled").SetValue(_computer, true, null);
+                _type.GetProperty("IsMotherboardEnabled")?.SetValue(_computer, true, null);
+                _type.GetProperty("IsControllerEnabled")?.SetValue(_computer, true, null);
                 _type.GetMethod("Open").Invoke(_computer, null);
             }
-            public double? ReadMaximumCpuTemperature()
+
+            public CpuMetrics Read()
             {
-                var values = new List<double>();
-                foreach (var hardware in (IEnumerable)_type.GetProperty("Hardware").GetValue(_computer, null)) Read(hardware, values);
-                return values.Count == 0 ? (double?)null : values.Max();
+                var temps = new List<double>(); var loads = new List<double>(); var clocks = new List<double>(); var fans = new List<double>();
+                foreach (var hardware in (IEnumerable)_type.GetProperty("Hardware").GetValue(_computer, null)) ReadHardware(hardware, temps, loads, clocks, fans);
+                return new CpuMetrics {
+                    MaximumTemperatureC = temps.Count == 0 ? (double?)null : temps.Max(),
+                    CpuLoadPercent = loads.Count == 0 ? (double?)null : loads.Max(),
+                    AverageCoreClockMHz = clocks.Count == 0 ? (double?)null : clocks.Average(),
+                    MaximumCoreClockMHz = clocks.Count == 0 ? (double?)null : clocks.Max(),
+                    FanRpm = fans.Count == 0 ? (double?)null : fans.Max()
+                };
             }
-            private static void Read(object hardware, List<double> values)
+
+            private static void ReadHardware(object hardware, List<double> temps, List<double> loads, List<double> clocks, List<double> fans)
             {
                 var type = hardware.GetType();
                 type.GetMethod("Update")?.Invoke(hardware, null);
                 var hardwareType = Convert.ToString(type.GetProperty("HardwareType")?.GetValue(hardware, null));
-                if (hardwareType == "Cpu")
                 foreach (var sensor in (IEnumerable)type.GetProperty("Sensors").GetValue(hardware, null))
                 {
                     var sensorType = Convert.ToString(sensor.GetType().GetProperty("SensorType").GetValue(sensor, null));
                     var name = Convert.ToString(sensor.GetType().GetProperty("Name").GetValue(sensor, null));
                     var value = sensor.GetType().GetProperty("Value").GetValue(sensor, null);
-                    if (sensorType == "Temperature" && value != null && name.IndexOf("Distance", StringComparison.OrdinalIgnoreCase) < 0
-                        && name.IndexOf("TjMax", StringComparison.OrdinalIgnoreCase) < 0)
-                    {
-                        var number = Convert.ToDouble(value);
-                        if (number > 0 && number < 150) values.Add(number);
-                    }
+                    if (value == null) continue;
+                    var number = Convert.ToDouble(value);
+                    if (hardwareType == "Cpu" && sensorType == "Temperature" && name.IndexOf("Distance", StringComparison.OrdinalIgnoreCase) < 0 && name.IndexOf("TjMax", StringComparison.OrdinalIgnoreCase) < 0 && number > 0 && number < 150) temps.Add(number);
+                    else if (hardwareType == "Cpu" && sensorType == "Load" && (name == "CPU Total" || name == "CPU Core Max") && number >= 0 && number <= 100) loads.Add(number);
+                    else if (hardwareType == "Cpu" && sensorType == "Clock" && name.IndexOf("Core", StringComparison.OrdinalIgnoreCase) >= 0 && number > 0) clocks.Add(number);
+                    else if (sensorType == "Fan" && number >= 0) fans.Add(number);
                 }
-                foreach (var child in (IEnumerable)type.GetProperty("SubHardware").GetValue(hardware, null)) Read(child, values);
+                foreach (var child in (IEnumerable)type.GetProperty("SubHardware").GetValue(hardware, null)) ReadHardware(child, temps, loads, clocks, fans);
             }
+
             public void Dispose() { try { _type.GetMethod("Close").Invoke(_computer, null); } catch { } }
         }
 
