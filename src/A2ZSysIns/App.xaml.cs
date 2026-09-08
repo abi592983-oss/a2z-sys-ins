@@ -57,6 +57,9 @@ namespace A2ZSysIns
             PortableSessionLog.Write("Application startup", "Portable diagnostic flight recorder initialized. Local recovery journal=" + SessionRecoveryJournal.PathName);
             if (incomplete) PortableSessionLog.Write("Previous incomplete session detected", "Session=" + previousSession + "; previousLog=" + previousLog);
 
+            try { PawnIoResidueCleaner.VerifyPreviousCleanupAfterRestart(); }
+            catch (Exception ex) { PortableSessionLog.Write("Previous-session PawnIO post-restart verification exception", ex.ToString()); }
+
             try { PawnIoResidueCleaner.RecoverPreviousIncompleteSessionServiceResidue(); }
             catch (Exception ex) { PortableSessionLog.Write("Previous-session PawnIO service recovery exception", ex.ToString()); }
 
