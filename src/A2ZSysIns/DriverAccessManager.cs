@@ -5,7 +5,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
-using System.Text;
 
 namespace A2ZSysIns
 {
@@ -95,36 +94,64 @@ namespace A2ZSysIns
                 EvidenceEngine.Log(report, "PawnIO temporary install planned", ownership);
 
                 var exit = RunInstaller(current.BundledInstaller, "-install -silent", report, "install");
+                var afterInstall = DetectPawnIo();
+                var newInf = FindPawnIoOemInf().Except(_baselinePawnIoInf, StringComparer.OrdinalIgnoreCase).Any();
+                var servicePresent = PawnIoServiceKeyPresent();
+
+                if (afterInstall.Installed || newInf || servicePresent)
+                {
+                    _ownedPawnIo = true;
+                    PortableSessionLog.RecordOwnedResource("driver", "PawnIO-2.2.0", "temporary Inspector-owned deployment detected after installer execution");
+                    SessionRecoveryJournal.RecordOwnedResource("driver", "PawnIO-2.2.0", "temporary Inspector-owned deployment detected after installer execution");
+                }
+
                 if (exit != 0 && exit != 3010)
                 {
                     detail = "PawnIO installer returned exit code " + exit + ".";
                     EvidenceEngine.Log(report, "PawnIO temporary install failed", detail);
+                    if (_ownedPawnIo) CleanupOwnedPawnIo(report, "installer failed after creating PawnIO resources");
                     return false;
                 }
                 if (exit == 3010)
                 {
                     detail = "PawnIO installation requested a reboot. Inspector will clean up the temporary deployment and will not use it this run.";
-                    _ownedPawnIo = true;
-                    PortableSessionLog.RecordOwnedResource("driver", "PawnIO-2.2.0", "installed; reboot-required");
-                    SessionRecoveryJournal.RecordOwnedResource("driver", "PawnIO-2.2.0", "installed; reboot-required");
-                    CleanupOwnedPawnIo(report, "install requested reboot");
+                    if (_ownedPawnIo) CleanupOwnedPawnIo(report, "install requested reboot");
                     return false;
                 }
 
-                var after = DetectPawnIo();
-                if (!after.Installed)
+                if (!afterInstall.Installed)
                 {
                     detail = "PawnIO installer returned success but the installation could not be verified.";
                     EvidenceEngine.Log(report, "PawnIO verification failed", detail);
+                    if (_ownedPawnIo) CleanupOwnedPawnIo(report, "installation verification failed");
                     return false;
                 }
 
-                _ownedPawnIo = true;
-                PortableSessionLog.RecordOwnedResource("driver", "PawnIO-2.2.0", "temporary Inspector-owned deployment");
-                SessionRecoveryJournal.RecordOwnedResource("driver", "PawnIO-2.2.0", "temporary Inspector-owned deployment");
-                detail = "PawnIO " + (after.Version == null ? "2.2.0" : after.Version.ToString()) + " temporarily installed and verified.";
+                detail = "PawnIO " + (afterInstall.Version == null ? "2.2.0" : afterInstall.Version.ToString()) + " temporarily installed and verified.";
                 EvidenceEngine.Log(report, "PawnIO temporary install verified", detail);
                 return true;
+            }
+        }
+
+        public static void RecoverPreviousOwnedPawnIo()
+        {
+            string previousSession;
+            if (!SessionRecoveryJournal.PreviousIncompleteSessionProvesPawnIoOwnership(out previousSession)) return;
+
+            lock (Sync)
+            {
+                _baselinePawnIoInf = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                _ownedPawnIo = DetectPawnIo().Installed || PawnIoServiceKeyPresent() || FindPawnIoOemInf().Count > 0;
+                if (!_ownedPawnIo)
+                {
+                    PortableSessionLog.Write("Previous PawnIO recovery", "Previous session " + previousSession + " proved ownership, but no PawnIO residue is currently detectable.");
+                    SessionRecoveryJournal.Write("PAWNIO_RECOVERY", "No residue detected for previous session " + previousSession);
+                    return;
+                }
+
+                var report = new InspectionReport { InspectionId = "recovery-" + previousSession };
+                EvidenceEngine.Log(report, "Previous PawnIO recovery", "Recovering proven Inspector-owned PawnIO from incomplete session " + previousSession);
+                CleanupOwnedPawnIo(report, "startup recovery of incomplete session " + previousSession);
             }
         }
 
@@ -153,14 +180,15 @@ namespace A2ZSysIns
                     var currentInf = FindPawnIoOemInf();
                     foreach (var inf in currentInf.Except(_baselinePawnIoInf, StringComparer.OrdinalIgnoreCase).ToArray())
                     {
+                        string output;
                         var code = RunProcess(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "pnputil.exe"),
-                            "/delete-driver " + inf + " /uninstall", out var output);
+                            "/delete-driver " + inf + " /uninstall", out output);
                         EvidenceEngine.Log(report, "PawnIO DriverStore cleanup", inf + " Exit=" + code + " " + output);
                     }
 
                     var remainingNewInf = FindPawnIoOemInf().Except(_baselinePawnIoInf, StringComparer.OrdinalIgnoreCase).ToArray();
                     var registryPresent = DetectPawnIo().Installed;
-                    var servicePresent = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\PawnIO") != null;
+                    var servicePresent = PawnIoServiceKeyPresent();
                     var clean = !registryPresent && !servicePresent && remainingNewInf.Length == 0;
                     var verification = "uninstallRegistry=" + registryPresent + "; serviceKey=" + servicePresent +
                         "; newDriverStoreInf=" + string.Join(",", remainingNewInf);
@@ -187,7 +215,8 @@ namespace A2ZSysIns
 
         private static int RunInstaller(string exe, string args, InspectionReport report, string operation)
         {
-            var exit = RunProcess(exe, args, out var output);
+            string output;
+            var exit = RunProcess(exe, args, out output);
             EvidenceEngine.Log(report, "PawnIO " + operation + " process", "Exit=" + exit + " " + output);
             PortableSessionLog.Write("PawnIO " + operation + " process", "Exit=" + exit + " " + output);
             SessionRecoveryJournal.Write("PAWNIO_" + operation.ToUpperInvariant(), "Exit=" + exit + " " + output);
@@ -220,6 +249,15 @@ namespace A2ZSysIns
                 }
             }
             catch { return false; }
+        }
+
+        private static bool PawnIoServiceKeyPresent()
+        {
+            try
+            {
+                using (var key = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\PawnIO")) return key != null;
+            }
+            catch { return true; }
         }
 
         private static HashSet<string> FindPawnIoOemInf()
