@@ -29,6 +29,11 @@ namespace A2ZSysIns
             try
             {
                 await Step(10, "Collecting Windows and hardware information...", () => Collectors.CollectSystem(_report));
+                PortableSessionLog.SetDeviceIdentity(
+                    _report.System.ContainsKey("Manufacturer") ? _report.System["Manufacturer"] : null,
+                    _report.System.ContainsKey("Model") ? _report.System["Model"] : null,
+                    _report.System.ContainsKey("Serial number") ? _report.System["Serial number"] : null);
+                EvidenceEngine.Log(_report, "Portable diagnostic location", PortableSessionLog.PathName);
                 await Step(22, "Measuring resource usage with fallback methods...", () => EvidenceEngine.Resources(_report));
                 await Step(38, "Collecting physical storage and SMART evidence...", () => EvidenceEngine.Drives(_report));
                 await Step(58, "Reviewing Windows events and their recorded details...", () => EvidenceEngine.Events(_report));
@@ -38,7 +43,7 @@ namespace A2ZSysIns
                 EvidenceEngine.Log(_report, "Session completed", "Completed at " + _report.CompletedAt.ToString("o") + "; measurements=" + _report.Measurements.Count + "; findings=" + _report.Findings.Count);
                 OverallText.Text = "Assessment: " + _report.OverallStatus; InspectionIdText.Text = "Inspection " + _report.InspectionId; ResultsList.ItemsSource = _report.Scores; ReportViewer.Document = ReportService.Build(_report); Tabs.SelectedIndex = 2;
             }
-            catch (Exception ex) { if (_report != null) EvidenceEngine.Log(_report, "Unhandled inspection error", ex.ToString()); MessageBox.Show(this, "The inspection could not complete. No changes were made to this PC.\n\n" + ex.GetBaseException().Message, "Inspection error", MessageBoxButton.OK, MessageBoxImage.Error); StatusText.Text = "Inspection stopped"; }
+            catch (Exception ex) { if (_report != null) EvidenceEngine.Log(_report, "Unhandled inspection error", ex.ToString()); MessageBox.Show(this, "The inspection could not complete. Temporary Inspector-owned resources will be cleaned where applicable; see the retained diagnostic log.\n\n" + ex.GetBaseException().Message, "Inspection error", MessageBoxButton.OK, MessageBoxImage.Error); StatusText.Text = "Inspection stopped"; }
             finally { StartButton.IsEnabled = true; }
         }
         private async Task Step(int value, string text, Action action)
