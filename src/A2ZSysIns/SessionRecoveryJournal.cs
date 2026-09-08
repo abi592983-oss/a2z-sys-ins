@@ -57,6 +57,17 @@ namespace A2ZSysIns
             WriteForSession(sessionId, "CLEANUP_RESOURCE", kind + "|" + id + "|" + status + "|" + (detail ?? ""));
         }
 
+        public static string GetOwnedResourceDetail(string sessionId, string kind, string id)
+        {
+            try
+            {
+                var prefix = kind + "¦" + id + "¦";
+                var entry = ReadEntries().LastOrDefault(x => x[2] == sessionId && x[1] == "OWNED_RESOURCE" && x[3].StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+                return entry == null ? null : entry[3].Substring(prefix.Length);
+            }
+            catch { return null; }
+        }
+
         public static void Complete()
         {
             Write("SESSION_COMPLETE", DateTime.UtcNow.ToString("o"));
