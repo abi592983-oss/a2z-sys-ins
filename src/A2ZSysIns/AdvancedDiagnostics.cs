@@ -1,11 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Diagnostics.Eventing.Reader;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Management;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Newtonsoft.Json;
@@ -22,6 +20,7 @@ namespace A2ZSysIns
             CollectBitLocker(r);
             CollectWhea(r);
             CollectStorageStackEvents(r);
+            CollectPnPEvents(r);
             EnrichStorageLinks(r);
         }
 
@@ -35,8 +34,7 @@ namespace A2ZSysIns
                 r.System["CPU current clock snapshot"] = EvidenceEngine.Text(row, "CurrentClockSpeed") + " MHz";
                 r.System["CPU reported maximum clock"] = EvidenceEngine.Text(row, "MaxClockSpeed") + " MHz";
                 r.System["CPU load snapshot"] = EvidenceEngine.Text(row, "LoadPercentage") + "%";
-                EvidenceEngine.Record(r, "CPU clock/load snapshot", "Win32_Processor", "Measured",
-                    "Snapshot only. It is supporting evidence and is not by itself proof of throttling.", JsonConvert.SerializeObject(rows));
+                EvidenceEngine.Record(r, "CPU clock/load snapshot", "Win32_Processor", "Measured", "Snapshot only. It is supporting evidence and is not by itself proof of throttling.", JsonConvert.SerializeObject(rows));
             }
             catch (Exception ex) { EvidenceEngine.Record(r, "CPU clock/load snapshot", "Win32_Processor", "Unavailable", ex.GetBaseException().Message); }
         }
@@ -86,17 +84,13 @@ namespace A2ZSysIns
             return items.Count == 0 ? "Status returned; see measurement evidence" : string.Join("; ", items);
         }
 
-        private static void CollectWhea(InspectionReport r)
-        {
-            CollectProviderEvents(r, "System", "Microsoft-Windows-WHEA-Logger", null, 1000, AddWheaEvent);
-        }
+        private static void CollectWhea(InspectionReport r) { CollectProviderEvents(r, "System", "Microsoft-Windows-WHEA-Logger", 1000, AddWheaEvent); }
 
         private static void AddWheaEvent(InspectionReport r, string xml)
         {
             var doc = XElement.Parse(xml); var ns = doc.Name.Namespace; var system = doc.Element(ns + "System");
             var id = (int)system.Element(ns + "EventID");
-            var data = doc.Descendants(ns + "Data").Where(x => x.Attribute("Name") != null)
-                .GroupBy(x => (string)x.Attribute("Name")).ToDictionary(x => x.Key, x => x.First().Value, StringComparer.OrdinalIgnoreCase);
+            var data = doc.Descendants(ns + "Data").Where(x => x.Attribute("Name") != null).GroupBy(x => (string)x.Attribute("Name")).ToDictionary(x => x.Key, x => x.First().Value, StringComparer.OrdinalIgnoreCase);
             string G(string k) { string v; return data.TryGetValue(k, out v) ? v : ""; }
             var component = First(G("Component"), G("ErrorSource"), G("ErrorType"), G("SectionType"));
             var device = First(G("PrimaryDeviceName"), G("DeviceId"), G("BusDeviceFunction"), G("ApicId"), G("ProcessorId"));
@@ -104,10 +98,7 @@ namespace A2ZSysIns
             var item = r.Events.FirstOrDefault(x => x.Signature == signature);
             if (item == null)
             {
-                item = new EventFinding { Source = "Microsoft-Windows-WHEA-Logger", EventId = id, Signature = signature,
-                    Summary = "WHEA hardware error" + (component == "" ? "" : " — " + component),
-                    Cause = "Windows Hardware Error Architecture recorded a hardware error. The event identifies an error record, but component replacement requires correlation with the record details and recurrence.",
-                    Level = "Warning" };
+                item = new EventFinding { Source = "Microsoft-Windows-WHEA-Logger", EventId = id, Signature = signature, Summary = "WHEA hardware error" + (component == "" ? "" : " — " + component), Cause = "Windows Hardware Error Architecture recorded a hardware error. The event identifies an error record, but component replacement requires correlation with the record details and recurrence.", Level = "Warning" };
                 r.Events.Add(item);
             }
             item.Count++; item.RawEvents.Add(xml);
@@ -116,34 +107,45 @@ namespace A2ZSysIns
 
         private static void CollectStorageStackEvents(InspectionReport r)
         {
-            var providers = new[] { "storahci", "stornvme", "iaStorA", "iaStorAC", "iaStorV", "disk", "Ntfs", "Microsoft-Windows-Ntfs" };
-            foreach (var provider in providers)
-                CollectProviderEvents(r, "System", provider, null, 1000, AddStorageStackEvent);
+            var providers = new[] { "storahci", "stornvme", "iaStorA", "iaStorAC", "iaStorV", "Disk", "Ntfs", "Microsoft-Windows-Ntfs" };
+            foreach (var provider in providers) CollectProviderEvents(r, "System", provider, 1000, AddStorageStackEvent);
         }
 
         private static void AddStorageStackEvent(InspectionReport r, string xml)
         {
             var doc = XElement.Parse(xml); var ns = doc.Name.Namespace; var system = doc.Element(ns + "System");
             var provider = (string)system.Element(ns + "Provider").Attribute("Name"); var id = (int)system.Element(ns + "EventID");
-            if ((provider.Equals("disk", StringComparison.OrdinalIgnoreCase) && id == 7) ||
-                ((provider.Equals("Ntfs", StringComparison.OrdinalIgnoreCase) || provider.Equals("Microsoft-Windows-Ntfs", StringComparison.OrdinalIgnoreCase)) && id == 55)) return; // already collected by the core engine
-            var data = doc.Descendants(ns + "Data").Select(x => x.Value).Where(x => !string.IsNullOrWhiteSpace(x)).Take(4).ToArray();
-            var detail = string.Join("|", data);
-            var signature = "StorageStack:" + provider + ":" + id + ":" + Clean(detail);
+            if ((provider.Equals("Disk", StringComparison.OrdinalIgnoreCase) && id == 7) || ((provider.Equals("Ntfs", StringComparison.OrdinalIgnoreCase) || provider.Equals("Microsoft-Windows-Ntfs", StringComparison.OrdinalIgnoreCase)) && id == 55)) return;
+            var detail = string.Join("|", doc.Descendants(ns + "Data").Select(x => x.Value).Where(x => !string.IsNullOrWhiteSpace(x)).Take(4).ToArray());
+            AddGroupedEvent(r, provider, id, "StorageStack:", "Storage-stack event " + provider + " " + id, "A Windows storage/file-system provider recorded a warning/error. Severity is based on recurrence and correlation; the provider event alone is not automatically a failed drive.", detail, xml);
+        }
+
+        private static void CollectPnPEvents(InspectionReport r)
+        {
+            foreach (var provider in new[] { "Microsoft-Windows-Kernel-PnP", "Microsoft-Windows-UserPnp" }) CollectProviderEvents(r, "System", provider, 500, AddPnPEvent);
+        }
+
+        private static void AddPnPEvent(InspectionReport r, string xml)
+        {
+            var doc = XElement.Parse(xml); var ns = doc.Name.Namespace; var system = doc.Element(ns + "System");
+            var provider = (string)system.Element(ns + "Provider").Attribute("Name"); var id = (int)system.Element(ns + "EventID");
+            var named = doc.Descendants(ns + "Data").Where(x => x.Attribute("Name") != null).ToList();
+            string Find(string n) { var x = named.FirstOrDefault(d => string.Equals((string)d.Attribute("Name"), n, StringComparison.OrdinalIgnoreCase)); return x == null ? "" : x.Value; }
+            var device = First(Find("DeviceInstanceId"), Find("DeviceId"), Find("InstanceId"), named.Select(x => x.Value).FirstOrDefault());
+            AddGroupedEvent(r, provider, id, "PnP:", "PnP device warning/error", "Windows recorded a Plug and Play warning/error. A repeated signature can indicate a device, connector, driver or controller that repeatedly disappears or fails enumeration; one event is not a hardware diagnosis.", device, xml);
+        }
+
+        private static void AddGroupedEvent(InspectionReport r, string provider, int id, string prefix, string summary, string cause, string detail, string xml)
+        {
+            var signature = prefix + provider + ":" + id + ":" + Clean(detail);
             var item = r.Events.FirstOrDefault(x => x.Signature == signature);
-            if (item == null)
-            {
-                item = new EventFinding { Source = provider, EventId = id, Signature = signature, Summary = "Storage-stack event " + provider + " " + id,
-                    Cause = "A Windows storage/file-system provider recorded an event. Severity is based on recurrence and correlation; the provider event alone is not automatically a failed drive.", Level = "Warning" };
-                r.Events.Add(item);
-            }
+            if (item == null) { item = new EventFinding { Source = provider, EventId = id, Signature = signature, Summary = summary, Cause = cause, Level = "Warning" }; r.Events.Add(item); }
             item.Count++; item.RawEvents.Add(xml);
         }
 
-        private static void CollectProviderEvents(InspectionReport r, string log, string provider, int? eventId, int limit, Action<InspectionReport, string> add)
+        private static void CollectProviderEvents(InspectionReport r, string log, string provider, int limit, Action<InspectionReport, string> add)
         {
-            var filter = "Provider[@Name='" + provider + "']" + (eventId.HasValue ? " and EventID=" + eventId.Value : "") + " and TimeCreated[timediff(@SystemTime) <= 2592000000]";
-            var query = "*[System[" + filter + "]]";
+            var query = "*[System[Provider[@Name='" + provider + "'] and (Level=1 or Level=2 or Level=3) and TimeCreated[timediff(@SystemTime) <= 2592000000]]]";
             var xmls = new List<string>();
             try
             {
@@ -151,7 +153,7 @@ namespace A2ZSysIns
                 {
                     EventRecord ev; while (xmls.Count < limit && (ev = reader.ReadEvent(TimeSpan.FromSeconds(5))) != null) using (ev) xmls.Add(ev.ToXml());
                 }
-                EvidenceEngine.Record(r, provider + " advanced events", "EventLogReader", xmls.Count == limit ? "Partial" : "Measured", xmls.Count + " event(s) returned from the last 30 days.");
+                EvidenceEngine.Record(r, provider + " advanced events", "EventLogReader", xmls.Count == limit ? "Partial" : "Measured", xmls.Count + " warning/error event(s) returned from the last 30 days.");
                 foreach (var xml in xmls) add(r, xml);
             }
             catch (Exception ex) { EvidenceEngine.Record(r, provider + " advanced events", "EventLogReader", "Unavailable", ex.GetBaseException().Message); }
@@ -164,16 +166,9 @@ namespace A2ZSysIns
                 if (string.IsNullOrWhiteSpace(d.RawEvidence)) { EvidenceEngine.Record(r, d.DeviceId + " link speed", "smartctl JSON", "Unavailable", "No structured SMART JSON was retained for this drive."); continue; }
                 try
                 {
-                    var j = JObject.Parse(d.RawEvidence);
-                    var current = (string)j.SelectToken("interface_speed.current.string");
-                    var max = (string)j.SelectToken("interface_speed.max.string");
-                    if (!string.IsNullOrWhiteSpace(current)) d.LinkCurrent = current;
-                    if (!string.IsNullOrWhiteSpace(max)) d.LinkMaximum = max;
-                    if (string.IsNullOrWhiteSpace(current) || string.IsNullOrWhiteSpace(max))
-                    {
-                        EvidenceEngine.Record(r, d.DeviceId + " link speed", "smartctl JSON", "Unavailable", "The device did not expose both negotiated and maximum interface-speed fields. No degradation inference is made.");
-                        continue;
-                    }
+                    var j = JObject.Parse(d.RawEvidence); var current = (string)j.SelectToken("interface_speed.current.string"); var max = (string)j.SelectToken("interface_speed.max.string");
+                    if (!string.IsNullOrWhiteSpace(current)) d.LinkCurrent = current; if (!string.IsNullOrWhiteSpace(max)) d.LinkMaximum = max;
+                    if (string.IsNullOrWhiteSpace(current) || string.IsNullOrWhiteSpace(max)) { EvidenceEngine.Record(r, d.DeviceId + " link speed", "smartctl JSON", "Unavailable", "The device did not expose both negotiated and maximum interface-speed fields. No degradation inference is made."); continue; }
                     EvidenceEngine.Record(r, d.DeviceId + " link speed", "smartctl JSON", "Measured", "Negotiated=" + current + "; device maximum=" + max + ". Platform/controller capability is not assumed. A mismatch is supporting evidence only unless corroborated.");
                 }
                 catch (Exception ex) { EvidenceEngine.Record(r, d.DeviceId + " link speed", "smartctl JSON", "Unavailable", ex.GetBaseException().Message); }
@@ -181,6 +176,6 @@ namespace A2ZSysIns
         }
 
         private static string First(params string[] values) { return values.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? ""; }
-        private static string Clean(string value) { return Regex.Replace(value ?? "", @"\s+", " ").Trim().Substring(0, Math.Min(160, Regex.Replace(value ?? "", @"\s+", " ").Trim().Length)); }
+        private static string Clean(string value) { var s = Regex.Replace(value ?? "", @"\s+", " ").Trim(); return s.Length <= 160 ? s : s.Substring(0, 160); }
     }
 }
