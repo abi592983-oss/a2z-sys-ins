@@ -29,17 +29,18 @@ namespace A2ZSysIns
             Tabs.SelectedIndex = 1; StartButton.IsEnabled = false;
             try
             {
-                await Step(10, "Collecting Windows and hardware information...", () => Collectors.CollectSystem(_report));
+                await Step(8, "Collecting Windows and hardware information...", () => Collectors.CollectSystem(_report));
                 PortableSessionLog.SetDeviceIdentity(
                     _report.System.ContainsKey("Manufacturer") ? _report.System["Manufacturer"] : null,
                     _report.System.ContainsKey("Model") ? _report.System["Model"] : null,
                     _report.System.ContainsKey("Serial number") ? _report.System["Serial number"] : null);
                 EvidenceEngine.Log(_report, "Portable diagnostic location", PortableSessionLog.PathName);
-                await Step(22, "Measuring resource usage with fallback methods...", () => EvidenceEngine.Resources(_report));
-                await Step(38, "Collecting physical storage and SMART evidence...", () => EvidenceEngine.Drives(_report));
-                await Step(58, "Reviewing Windows events and their recorded details...", () => EvidenceEngine.Events(_report));
-                await Step(75, "Sampling available hardware sensors...", CollectSensorsWithPawnIoFallback);
-                await Step(90, "Calculating evidence-based results...", () => Scoring.Calculate(_report));
+                await Step(18, "Measuring resource usage with fallback methods...", () => EvidenceEngine.Resources(_report));
+                await Step(32, "Collecting physical storage and SMART evidence...", () => EvidenceEngine.Drives(_report));
+                await Step(48, "Reviewing core Windows events and recorded details...", () => EvidenceEngine.Events(_report));
+                await Step(62, "Collecting advanced correlated evidence...", () => AdvancedDiagnostics.Collect(_report));
+                await Step(78, "Sampling available hardware sensors...", CollectSensorsWithPawnIoFallback);
+                await Step(92, "Calculating evidence-based results...", () => { Scoring.Calculate(_report); AdvancedAssessment.Apply(_report); });
                 _report.CompletedAt = DateTime.Now; Progress.Value = 100; ProgressText.Text = "Inspection completed."; StatusText.Text = "Inspection " + _report.InspectionId + " completed";
                 EvidenceEngine.Log(_report, "Session completed", "Completed at " + _report.CompletedAt.ToString("o") + "; measurements=" + _report.Measurements.Count + "; findings=" + _report.Findings.Count);
                 OverallText.Text = "Assessment: " + _report.OverallStatus; InspectionIdText.Text = "Inspection " + _report.InspectionId; ResultsList.ItemsSource = _report.Scores; ReportViewer.Document = ReportService.Build(_report); Tabs.SelectedIndex = 2;
@@ -73,15 +74,10 @@ namespace A2ZSysIns
                     _report.Sensors.Clear();
                     Collectors.CollectSensors(_report, x => Dispatcher.Invoke(() => ProgressText.Text = "PawnIO retry: " + x));
                 }
-                else
-                {
-                    EvidenceEngine.Log(_report, "PawnIO sensor fallback unavailable", detail);
-                }
+                else EvidenceEngine.Log(_report, "PawnIO sensor fallback unavailable", detail);
             }
             else if (!hasCpuTemperature && initialPawnIo.Installed)
-            {
                 EvidenceEngine.Log(_report, "PawnIO sensor fallback not installed", "A pre-existing PawnIO installation was detected. Inspector did not modify or replace it.");
-            }
 
             EvidenceEngine.FinishSensors(_report);
             DriverAccessManager.CleanupOwnedPawnIo(_report, "sensor collection finished");
@@ -92,16 +88,8 @@ namespace A2ZSysIns
             Progress.Value = value; ProgressText.Text = text; StatusText.Text = text;
             var timer = Stopwatch.StartNew();
             EvidenceEngine.Log(_report, "Step started", text);
-            try
-            {
-                await Task.Run(action);
-                EvidenceEngine.Log(_report, "Step completed", text + " Duration=" + timer.Elapsed);
-            }
-            catch (Exception ex)
-            {
-                EvidenceEngine.Log(_report, "Step failed", text + " Duration=" + timer.Elapsed + "\n" + ex);
-                throw;
-            }
+            try { await Task.Run(action); EvidenceEngine.Log(_report, "Step completed", text + " Duration=" + timer.Elapsed); }
+            catch (Exception ex) { EvidenceEngine.Log(_report, "Step failed", text + " Duration=" + timer.Elapsed + "\n" + ex); throw; }
         }
         private void ViewReport_Click(object sender, RoutedEventArgs e) { if (Ready()) { ReportViewer.Document = ReportService.Build(_report); Tabs.SelectedIndex = 3; } }
         private void ExportJson_Click(object sender, RoutedEventArgs e) { if (Ready()) ReportService.SaveJson(_report, this); }
@@ -119,29 +107,17 @@ namespace A2ZSysIns
             try
             {
                 var current = DriverAccessManager.DetectPawnIo();
-                if (!current.Installed)
-                {
-                    string detail;
-                    DriverAccessManager.EnsureModernPawnIo(_report, out detail);
-                    EvidenceEngine.Log(_report, "CPU stress driver preparation", detail);
-                }
-                else
-                {
-                    EvidenceEngine.Log(_report, "CPU stress driver preparation", current.Detail);
-                }
+                if (!current.Installed) { string detail; DriverAccessManager.EnsureModernPawnIo(_report, out detail); EvidenceEngine.Log(_report, "CPU stress driver preparation", detail); }
+                else EvidenceEngine.Log(_report, "CPU stress driver preparation", current.Detail);
 
                 var progress = new Progress<string>(text => { StatusText.Text = text; OverallText.Text = text; });
                 var result = await CpuStressTestService.RunAsync(_report, _stressCancellation.Token, progress);
-                Scoring.Calculate(_report);
+                Scoring.Calculate(_report); AdvancedAssessment.Apply(_report);
                 ResultsList.ItemsSource = null; ResultsList.ItemsSource = _report.Scores;
                 OverallText.Text = "CPU test: " + result.Status + " — " + result.StopReason;
                 ReportViewer.Document = ReportService.Build(_report);
             }
-            catch (Exception ex)
-            {
-                EvidenceEngine.Log(_report, "CPU stress UI error", ex.ToString());
-                MessageBox.Show(this, ex.GetBaseException().Message, "CPU stress test", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
+            catch (Exception ex) { EvidenceEngine.Log(_report, "CPU stress UI error", ex.ToString()); MessageBox.Show(this, ex.GetBaseException().Message, "CPU stress test", MessageBoxButton.OK, MessageBoxImage.Error); }
             finally
             {
                 DriverAccessManager.CleanupOwnedPawnIo(_report, "CPU stress test finished");
@@ -150,12 +126,7 @@ namespace A2ZSysIns
                 StatusText.Text = "CPU stress test finished";
             }
         }
-        private void CancelStress_Click(object sender, RoutedEventArgs e)
-        {
-            if (_stressCancellation == null) return;
-            EvidenceEngine.Log(_report, "CPU stress cancellation requested", "Technician pressed Stop stress test.");
-            _stressCancellation.Cancel();
-        }
+        private void CancelStress_Click(object sender, RoutedEventArgs e) { if (_stressCancellation == null) return; EvidenceEngine.Log(_report, "CPU stress cancellation requested", "Technician pressed Stop stress test."); _stressCancellation.Cancel(); }
         private void Print_Click(object sender, RoutedEventArgs e) { if (Ready()) ReportService.Print(ReportService.Build(_report), this); }
         private void New_Click(object sender, RoutedEventArgs e) { if (_stressCancellation != null) return; _report = null; ResultsList.ItemsSource = null; ReportViewer.Document = null; Progress.Value = 0; ProgressText.Text = "Ready"; Tabs.SelectedIndex = 0; StatusText.Text = "Ready"; }
         private bool Ready() { if (_report != null) return true; MessageBox.Show(this, "Complete an inspection first."); return false; }
