@@ -70,7 +70,7 @@ namespace A2ZSysIns
             try
             {
                 if (!File.Exists(JournalPath)) return false;
-                var lines = File.ReadAllLines(JournalPath).Select(Parse).Where(x => x != null && x.Length >= 4).ToList();
+                var lines = ReadEntries();
                 var start = lines.LastOrDefault(x => x[1] == "SESSION_START");
                 if (start == null) return false;
                 sessionId = start[2];
@@ -79,6 +79,26 @@ namespace A2ZSysIns
                 return !completed;
             }
             catch { return false; }
+        }
+
+        public static bool PreviousIncompleteSessionProvesPawnIoOwnership(out string sessionId)
+        {
+            sessionId = null;
+            try
+            {
+                string ignored;
+                if (!HasIncompleteSession(out sessionId, out ignored) || string.IsNullOrWhiteSpace(sessionId)) return false;
+                var entries = ReadEntries().Where(x => x[2] == sessionId).ToList();
+                var owned = entries.Any(x => x[1] == "OWNED_RESOURCE" && x[3].IndexOf("driver¦PawnIO-2.2.0", StringComparison.OrdinalIgnoreCase) >= 0);
+                var verified = entries.Any(x => x[1] == "CLEANUP_RESOURCE" && x[3].IndexOf("driver¦PawnIO-2.2.0¦VERIFIED", StringComparison.OrdinalIgnoreCase) >= 0);
+                return owned && !verified;
+            }
+            catch { return false; }
+        }
+
+        private static List<string[]> ReadEntries()
+        {
+            return File.ReadAllLines(JournalPath).Select(Parse).Where(x => x != null && x.Length >= 4).ToList();
         }
 
         private static void Append(string type, string session, string detail)
