@@ -146,5 +146,9 @@ namespace A2ZSysIns
         [DataMember] public int ElapsedSeconds;
         [DataMember] public int TargetLoadPercent;
         [DataMember] public double TemperatureC;
+        [DataMember] public double? ObservedCpuLoadPercent;
+        [DataMember] public double? AverageCoreClockMHz;
+        [DataMember] public double? MaximumCoreClockMHz;
+        [DataMember] public double? FanRpm;
     }
 }
