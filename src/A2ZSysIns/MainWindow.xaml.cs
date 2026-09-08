@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -37,15 +38,55 @@ namespace A2ZSysIns
                 await Step(22, "Measuring resource usage with fallback methods...", () => EvidenceEngine.Resources(_report));
                 await Step(38, "Collecting physical storage and SMART evidence...", () => EvidenceEngine.Drives(_report));
                 await Step(58, "Reviewing Windows events and their recorded details...", () => EvidenceEngine.Events(_report));
-                await Step(75, "Sampling available hardware sensors...", () => { Collectors.CollectSensors(_report, x => Dispatcher.Invoke(() => ProgressText.Text = x)); EvidenceEngine.FinishSensors(_report); });
+                await Step(75, "Sampling available hardware sensors...", CollectSensorsWithPawnIoFallback);
                 await Step(90, "Calculating evidence-based results...", () => Scoring.Calculate(_report));
                 _report.CompletedAt = DateTime.Now; Progress.Value = 100; ProgressText.Text = "Inspection completed."; StatusText.Text = "Inspection " + _report.InspectionId + " completed";
                 EvidenceEngine.Log(_report, "Session completed", "Completed at " + _report.CompletedAt.ToString("o") + "; measurements=" + _report.Measurements.Count + "; findings=" + _report.Findings.Count);
                 OverallText.Text = "Assessment: " + _report.OverallStatus; InspectionIdText.Text = "Inspection " + _report.InspectionId; ResultsList.ItemsSource = _report.Scores; ReportViewer.Document = ReportService.Build(_report); Tabs.SelectedIndex = 2;
             }
             catch (Exception ex) { if (_report != null) EvidenceEngine.Log(_report, "Unhandled inspection error", ex.ToString()); MessageBox.Show(this, "The inspection could not complete. Temporary Inspector-owned resources will be cleaned where applicable; see the retained diagnostic log.\n\n" + ex.GetBaseException().Message, "Inspection error", MessageBoxButton.OK, MessageBoxImage.Error); StatusText.Text = "Inspection stopped"; }
-            finally { StartButton.IsEnabled = true; }
+            finally
+            {
+                if (_report != null) DriverAccessManager.CleanupOwnedPawnIo(_report, "inspection finished");
+                StartButton.IsEnabled = true;
+            }
         }
+
+        private void CollectSensorsWithPawnIoFallback()
+        {
+            var initialPawnIo = DriverAccessManager.DetectPawnIo();
+            EvidenceEngine.Log(_report, "Sensor access baseline", initialPawnIo.Detail);
+            Collectors.CollectSensors(_report, x => Dispatcher.Invoke(() => ProgressText.Text = x));
+
+            var hasCpuTemperature = _report.Sensors.Any(x => EvidenceEngine.ActualTemperature(x) &&
+                (x.Hardware.IndexOf("CPU", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 x.Name.StartsWith("CPU", StringComparison.OrdinalIgnoreCase) ||
+                 x.Name == "Core Max" || x.Name == "Core Average"));
+
+            if (!hasCpuTemperature && !initialPawnIo.Installed)
+            {
+                string detail;
+                Dispatcher.Invoke(() => ProgressText.Text = "CPU temperature unavailable; trying temporary PawnIO 2.2 fallback...");
+                if (DriverAccessManager.EnsureModernPawnIo(_report, out detail))
+                {
+                    EvidenceEngine.Log(_report, "Sensor retry", "Retrying LibreHardwareMonitor after PawnIO fallback. " + detail);
+                    _report.Sensors.Clear();
+                    Collectors.CollectSensors(_report, x => Dispatcher.Invoke(() => ProgressText.Text = "PawnIO retry: " + x));
+                }
+                else
+                {
+                    EvidenceEngine.Log(_report, "PawnIO sensor fallback unavailable", detail);
+                }
+            }
+            else if (!hasCpuTemperature && initialPawnIo.Installed)
+            {
+                EvidenceEngine.Log(_report, "PawnIO sensor fallback not installed", "A pre-existing PawnIO installation was detected. Inspector did not modify or replace it.");
+            }
+
+            EvidenceEngine.FinishSensors(_report);
+            DriverAccessManager.CleanupOwnedPawnIo(_report, "sensor collection finished");
+        }
+
         private async Task Step(int value, string text, Action action)
         {
             Progress.Value = value; ProgressText.Text = text; StatusText.Text = text;
@@ -77,6 +118,18 @@ namespace A2ZSysIns
             RunStressButton.IsEnabled = false; CancelStressButton.IsEnabled = true; StartButton.IsEnabled = false;
             try
             {
+                var current = DriverAccessManager.DetectPawnIo();
+                if (!current.Installed)
+                {
+                    string detail;
+                    DriverAccessManager.EnsureModernPawnIo(_report, out detail);
+                    EvidenceEngine.Log(_report, "CPU stress driver preparation", detail);
+                }
+                else
+                {
+                    EvidenceEngine.Log(_report, "CPU stress driver preparation", current.Detail);
+                }
+
                 var progress = new Progress<string>(text => { StatusText.Text = text; OverallText.Text = text; });
                 var result = await CpuStressTestService.RunAsync(_report, _stressCancellation.Token, progress);
                 Scoring.Calculate(_report);
@@ -91,6 +144,7 @@ namespace A2ZSysIns
             }
             finally
             {
+                DriverAccessManager.CleanupOwnedPawnIo(_report, "CPU stress test finished");
                 _stressCancellation.Dispose(); _stressCancellation = null;
                 RunStressButton.IsEnabled = true; CancelStressButton.IsEnabled = false; StartButton.IsEnabled = true;
                 StatusText.Text = "CPU stress test finished";
