@@ -37,7 +37,16 @@ namespace A2ZSysIns
                 await Step(48, "Reviewing core Windows events and recorded details...", () => EvidenceEngine.Events(_report));
                 await Step(62, "Collecting advanced correlated evidence...", () => AdvancedDiagnostics.Collect(_report));
                 await Step(78, "Sampling available hardware sensors...", CollectSensorsWithPawnIoFallback);
-                await Step(92, "Calculating evidence-based results...", () => { Scoring.Calculate(_report); AdvancedAssessment.Apply(_report); });
+                await Step(92, "Calculating evidence-based results...", () =>
+                {
+                    Scoring.Calculate(_report);
+                    // Correct storage interpretations before advanced correlation/reporting.
+                    // This prevents vendor-specific ATA attributes such as C5 from becoming
+                    // false failure indicators simply because the numeric ID matches.
+                    SmartInterpretation.NormalizeReport(_report);
+                    AdvancedAssessment.Apply(_report);
+                    SmartInterpretation.RefreshSummary(_report);
+                });
                 _report.CompletedAt = DateTime.Now; Progress.Value = 100; ProgressText.Text = "Inspection completed."; StatusText.Text = "Inspection " + _report.InspectionId + " completed";
                 EvidenceEngine.Log(_report, "Session completed", "Completed at " + _report.CompletedAt.ToString("o") + "; measurements=" + _report.Measurements.Count + "; findings=" + _report.Findings.Count);
                 OverallText.Text = "Assessment: " + _report.OverallStatus; InspectionIdText.Text = "Inspection " + _report.InspectionId; ResultsList.ItemsSource = _report.Scores; ReportViewer.Document = DarkReportPreviewService.Build(_report); Tabs.SelectedIndex = 2;
@@ -103,7 +112,7 @@ namespace A2ZSysIns
             {
                 EvidenceEngine.Log(_report, "PDF export failed", ex.ToString());
                 StatusText.Text = "PDF export failed";
-                MessageBox.Show(this, "The PDF could not be generated. The report data is still safe and the application will remain usable.\n\n" + ex.GetBaseException().Message, "PDF export error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(this, "The PDF could not be generated. The report data is still safe and the application will remain usable.\n\n" + ex.GetBaseException().Message, "A2Z System Inspector", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally { SavePdfButton.IsEnabled = true; }
         }
@@ -122,7 +131,10 @@ namespace A2ZSysIns
                 else EvidenceEngine.Log(_report, "CPU stress driver preparation", current.Detail);
                 var progress = new Progress<string>(text => { StatusText.Text = text; OverallText.Text = text; });
                 var result = await CpuStressTestService.RunAsync(_report, _stressCancellation.Token, progress);
-                Scoring.Calculate(_report); AdvancedAssessment.Apply(_report);
+                Scoring.Calculate(_report);
+                SmartInterpretation.NormalizeReport(_report);
+                AdvancedAssessment.Apply(_report);
+                SmartInterpretation.RefreshSummary(_report);
                 ResultsList.ItemsSource = null; ResultsList.ItemsSource = _report.Scores;
                 OverallText.Text = "CPU test: " + result.Status + " — " + result.StopReason;
                 ReportViewer.Document = DarkReportPreviewService.Build(_report);
