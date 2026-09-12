@@ -78,7 +78,6 @@ namespace A2ZSysIns
             writer.Space(8);
             writer.Status(Safe(r.OverallStatus));
             writer.Paragraph(Safe(r.CustomerSummary));
-
             writer.Heading("What you should do next");
             if (r.PriorityActions.Count == 0) writer.Bullet("No immediate action was generated from the available evidence.");
             else foreach (var x in r.PriorityActions) writer.Bullet(x);
@@ -167,8 +166,18 @@ namespace A2ZSysIns
             private readonly XBrush _text = new XSolidBrush(XColor.FromArgb(35, 44, 55));
             private readonly XBrush _muted = new XSolidBrush(XColor.FromArgb(95, 105, 116));
             private readonly XBrush _navy = new XSolidBrush(XColor.FromArgb(20, 48, 74));
+
             public PdfWriter(PdfDocument doc) { _doc = doc; NewPage(); }
-            public void NewPage() { _page = _doc.AddPage(); _page.Size = PdfSharp.PageSize.A4; _gfx = XGraphics.FromPdfPage(_page); _y = Top; }
+
+            public void NewPage()
+            {
+                DisposeGraphics();
+                _page = _doc.AddPage();
+                _page.Size = PdfSharp.PageSize.A4;
+                _gfx = XGraphics.FromPdfPage(_page);
+                _y = Top;
+            }
+
             public void Title(string text) { Ensure(34); DrawWrapped(text, _h1, _navy, 24, 1.08); Space(3); }
             public void Subtitle(string text) { DrawWrapped(text, _subtitle, _muted, 17, 1.1); Space(8); }
             public void Heading(string text) { Space(7); Ensure(26); DrawWrapped(text, _h2, _navy, 19, 1.1); Space(2); }
@@ -176,6 +185,7 @@ namespace A2ZSysIns
             public void Small(string text) { DrawWrapped(text, _small, _muted, 11, 1.15); }
             public void Bullet(string text) { DrawWrapped("- " + Safe(text), _body, _text, 14, 1.15, 10); Space(1); }
             public void Space(double points) { _y += points; }
+
             public void KeyValue(string key, string value)
             {
                 Ensure(18);
@@ -188,6 +198,7 @@ namespace A2ZSysIns
                 for (var i = 0; i < lines.Count; i++) _gfx.DrawString(lines[i], _body, _text, Left + keyWidth + 8, _y + 10 + (i * 12.5));
                 _y += h + 2;
             }
+
             public void Status(string text)
             {
                 var fill = XColor.FromArgb(228, 236, 242);
@@ -201,6 +212,7 @@ namespace A2ZSysIns
                 for (var i = 0; i < lines.Count; i++) _gfx.DrawString(lines[i], _h2, _text, Left + 10, _y + 22 + i * 18);
                 _y += h + 7;
             }
+
             public void ResultLine(string left, string state, string reason)
             {
                 var lines = Wrap(Safe(reason), _body, Width - 220);
@@ -212,6 +224,7 @@ namespace A2ZSysIns
                 for (var i = 0; i < lines.Count; i++) _gfx.DrawString(lines[i], _body, _text, Left + 218, _y + 14 + i * 12.5);
                 _y += h + 2;
             }
+
             public void Finding(Finding f)
             {
                 var body = Safe(f.Explanation) + " Action: " + Safe(f.Recommendation) + " Confidence: " + Safe(f.Confidence) + "; priority: " + Safe(f.ActionLevel) + ".";
@@ -227,8 +240,12 @@ namespace A2ZSysIns
                 foreach (var line in bodyLines) { _gfx.DrawString(line, _body, _text, Left + 8, yy); yy += 12.5; }
                 _y += h + 4;
             }
+
             public void FooterAllPages(string text)
             {
+                // The active page already owns an XGraphics instance. Dispose it
+                // before opening an Append graphics instance on that same page.
+                DisposeGraphics();
                 for (var i = 0; i < _doc.Pages.Count; i++)
                 {
                     using (var g = XGraphics.FromPdfPage(_doc.Pages[i], XGraphicsPdfPageOptions.Append))
@@ -238,14 +255,21 @@ namespace A2ZSysIns
                     }
                 }
             }
+
             private double Width => _page.Width.Point - Left - Right;
             private void Ensure(double needed) { if (_y + needed > _page.Height.Point - Bottom) NewPage(); }
+
             private void DrawWrapped(string text, XFont font, XBrush brush, double lineHeight, double factor, double indent = 0)
             {
                 var lines = Wrap(Safe(text), font, Width - indent);
                 Ensure(lines.Count * lineHeight + 2);
-                foreach (var line in lines) { _gfx.DrawString(line, font, brush, Left + indent, _y + lineHeight * 0.78); _y += lineHeight * factor; }
+                foreach (var line in lines)
+                {
+                    _gfx.DrawString(line, font, brush, Left + indent, _y + lineHeight * 0.78);
+                    _y += lineHeight * factor;
+                }
             }
+
             private List<string> Wrap(string text, XFont font, double maxWidth)
             {
                 var result = new List<string>();
@@ -263,6 +287,13 @@ namespace A2ZSysIns
                     result.Add(line);
                 }
                 return result;
+            }
+
+            private void DisposeGraphics()
+            {
+                if (_gfx == null) return;
+                _gfx.Dispose();
+                _gfx = null;
             }
         }
     }
