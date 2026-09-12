@@ -73,7 +73,11 @@ namespace A2ZSysIns
             // The WPF default Button template applies a bright theme hover layer that can
             // turn the terminal-green label unreadable. Replace only Run Inspection's
             // template so the rest of the existing UI remains unchanged.
-            try { ButtonThemeFix.ApplyRunInspection(MainWindow == null ? null : MainWindow.StartButton); }
+            try
+            {
+                var inspector = Current.MainWindow as A2ZSysIns.MainWindow;
+                ButtonThemeFix.ApplyRunInspection(inspector == null ? null : inspector.StartButton);
+            }
             catch (Exception ex) { PortableSessionLog.Write("Run Inspection button theme fix failed", ex.ToString()); }
         }
 
