@@ -33,17 +33,10 @@ namespace A2ZSysIns
             return 0;
         }
 
-        public static bool PendingSectors(DriveInfoRecord drive) =>
-            IsValidatedAttribute(drive, 197, "Current_Pending_Sector", "Current Pending Sector Count", "Current_Pending_Sector_Count");
-
-        public static bool UncorrectableSectors(DriveInfoRecord drive) =>
-            IsValidatedAttribute(drive, 198, "Offline_Uncorrectable", "Uncorrectable Sector Count", "Offline Uncorrectable");
-
-        public static bool ReallocatedSectors(DriveInfoRecord drive) =>
-            IsValidatedAttribute(drive, 5, "Reallocated_Sector_Ct", "Reallocated Sectors Count", "Reallocated_Sector_Count");
-
-        public static bool InterfaceCrcErrors(DriveInfoRecord drive) =>
-            IsValidatedAttribute(drive, 199, "UDMA_CRC_Error_Count", "UltraDMA CRC Error Count", "UDMA_CRC_Error");
+        public static bool PendingSectors(DriveInfoRecord drive) => IsValidatedAttribute(drive, 197, "Current_Pending_Sector", "Current Pending Sector Count", "Current_Pending_Sector_Count");
+        public static bool UncorrectableSectors(DriveInfoRecord drive) => IsValidatedAttribute(drive, 198, "Offline_Uncorrectable", "Uncorrectable Sector Count", "Offline Uncorrectable");
+        public static bool ReallocatedSectors(DriveInfoRecord drive) => IsValidatedAttribute(drive, 5, "Reallocated_Sector_Ct", "Reallocated Sectors Count", "Reallocated_Sector_Count");
+        public static bool InterfaceCrcErrors(DriveInfoRecord drive) => IsValidatedAttribute(drive, 199, "UDMA_CRC_Error_Count", "UltraDMA CRC Error Count", "UDMA_CRC_Error");
 
         public static bool HasCritical(DriveInfoRecord drive)
         {
@@ -59,15 +52,13 @@ namespace A2ZSysIns
                 || Value(drive, "NVMe_media_errors") > 0);
         }
 
-        public static bool HasInterfaceErrors(DriveInfoRecord drive) =>
-            drive != null && InterfaceCrcErrors(drive) && Raw(drive, 199) > 0;
+        public static bool HasInterfaceErrors(DriveInfoRecord drive) => drive != null && InterfaceCrcErrors(drive) && Raw(drive, 199) > 0;
 
         public static string Assessment(DriveInfoRecord drive)
         {
             if (HasCritical(drive)) return "Critical indicators";
             if (HasMediaErrors(drive) || HasInterfaceErrors(drive)) return "Attention: errors reported";
-            return drive != null && (drive.SmartPassed.HasValue || drive.Attributes.Count > 0)
-                ? "No flagged indicators in available data" : "Not assessed";
+            return drive != null && (drive.SmartPassed.HasValue || drive.Attributes.Count > 0) ? "No flagged indicators in available data" : "Not assessed";
         }
 
         public static string CriticalExplanation(DriveInfoRecord drive)
@@ -77,9 +68,7 @@ namespace A2ZSysIns
             if (PendingSectors(drive) && Raw(drive, 197) > 0) evidence.Add("validated pending sectors=" + Raw(drive, 197));
             if (UncorrectableSectors(drive) && Raw(drive, 198) > 0) evidence.Add("validated uncorrectable sectors=" + Raw(drive, 198));
             if (Value(drive, "NVMe_critical_warning") != 0) evidence.Add("NVMe critical_warning=" + Value(drive, "NVMe_critical_warning"));
-            return evidence.Count == 0
-                ? "A validated SMART/device failure indicator was reported, but the exact attribute semantics were not available in the saved evidence."
-                : "High-risk storage evidence was detected: " + string.Join(", ", evidence) + ".";
+            return evidence.Count == 0 ? "A validated SMART/device failure indicator was reported, but the exact attribute semantics were not available in the saved evidence." : "High-risk storage evidence was detected: " + string.Join(", ", evidence) + ".";
         }
 
         public static string EvidenceSummary(DriveInfoRecord drive)
@@ -109,21 +98,17 @@ namespace A2ZSysIns
                 var score = report.Scores.FirstOrDefault(x => (x.Category ?? "").Equals("Storage — " + model, StringComparison.OrdinalIgnoreCase));
                 if (score != null)
                 {
-                    score.Status = drive.Assessment.StartsWith("Critical", StringComparison.OrdinalIgnoreCase)
-                        ? "CRITICAL"
-                        : drive.Assessment.StartsWith("Attention", StringComparison.OrdinalIgnoreCase)
-                            ? "ATTENTION" : drive.Assessment == "Not assessed" ? "NOT TESTED" : "GOOD / NO FLAGGED INDICATOR";
-                    score.Reason = drive.Assessment.StartsWith("Critical", StringComparison.OrdinalIgnoreCase)
-                        ? CriticalExplanation(drive)
-                        : drive.Assessment == "Not assessed"
-                            ? "Drive health evidence could not be established."
-                            : "No validated failure indicator was flagged. Vendor-specific/unknown SMART attributes are retained as raw evidence and excluded from failure scoring.";
+                    score.Status = drive.Assessment.StartsWith("Critical", StringComparison.OrdinalIgnoreCase) ? "CRITICAL" : drive.Assessment.StartsWith("Attention", StringComparison.OrdinalIgnoreCase) ? "ATTENTION" : drive.Assessment == "Not assessed" ? "NOT TESTED" : "GOOD / NO FLAGGED INDICATOR";
+                    score.Reason = drive.Assessment.StartsWith("Critical", StringComparison.OrdinalIgnoreCase) ? CriticalExplanation(drive) : drive.Assessment == "Not assessed" ? "Drive health evidence could not be established." : "No validated failure indicator was flagged. Vendor-specific/unknown SMART attributes are retained as raw evidence and excluded from failure scoring.";
                 }
 
-                var falseCritical = report.Findings.Where(x => x.Category == "Storage"
-                    && (x.Title ?? "").Equals("Drive may be at risk of failure — " + model, StringComparison.OrdinalIgnoreCase)
-                    && !HasCritical(drive)).ToList();
-                foreach (var finding in falseCritical) report.Findings.Remove(finding);
+                var storageFindings = report.Findings.Where(x => x.Category == "Storage" && (x.Title ?? "").IndexOf(model, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+                foreach (var finding in storageFindings)
+                {
+                    if (finding.Title.StartsWith("Drive may be at risk of failure", StringComparison.OrdinalIgnoreCase) && !HasCritical(drive)) report.Findings.Remove(finding);
+                    else if (finding.Title.StartsWith("Storage media errors detected", StringComparison.OrdinalIgnoreCase) && !HasMediaErrors(drive)) report.Findings.Remove(finding);
+                    else if (finding.Title.StartsWith("Storage interface errors detected", StringComparison.OrdinalIgnoreCase) && !HasInterfaceErrors(drive)) report.Findings.Remove(finding);
+                }
             }
             RefreshSummary(report);
         }
@@ -139,7 +124,6 @@ namespace A2ZSysIns
             report.PriorityActions.AddRange(report.Findings.Where(x => x.ActionLevel == "Immediate").Select(x => x.Title).Distinct());
             report.PriorityActions.AddRange(report.Findings.Where(x => x.ActionLevel == "Recommended").Select(x => x.Title).Distinct());
             if (report.PriorityActions.Count == 0) report.PriorityActions.Add("No immediate repair action was generated from the available evidence; keep normal backups and monitor reported symptoms.");
-
             if (critical > 0)
             {
                 report.OverallStatus = "CRITICAL — immediate action recommended";
@@ -163,9 +147,7 @@ namespace A2ZSysIns
             }
         }
 
-        private static long Value(DriveInfoRecord drive, string key) =>
-            drive != null && drive.Attributes.TryGetValue(key, out var value) ? value : 0;
-
+        private static long Value(DriveInfoRecord drive, string key) => drive != null && drive.Attributes.TryGetValue(key, out var value) ? value : 0;
         private static string Safe(string value) => string.IsNullOrWhiteSpace(value) ? "Unknown drive" : value.Trim();
     }
 }
