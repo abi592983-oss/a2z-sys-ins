@@ -69,6 +69,12 @@ namespace A2ZSysIns
             AppDomain.CurrentDomain.UnhandledException += (s, x) => PortableSessionLog.Write("Unhandled AppDomain exception", Convert.ToString(x.ExceptionObject));
             DispatcherUnhandledException += (s, x) => PortableSessionLog.Write("Unhandled dispatcher exception", x.Exception == null ? "Unknown" : x.Exception.ToString());
             base.OnStartup(e);
+
+            // The WPF default Button template applies a bright theme hover layer that can
+            // turn the terminal-green label unreadable. Replace only Run Inspection's
+            // template so the rest of the existing UI remains unchanged.
+            try { ButtonThemeFix.ApplyRunInspection(MainWindow == null ? null : MainWindow.StartButton); }
+            catch (Exception ex) { PortableSessionLog.Write("Run Inspection button theme fix failed", ex.ToString()); }
         }
 
         protected override void OnExit(ExitEventArgs e)
