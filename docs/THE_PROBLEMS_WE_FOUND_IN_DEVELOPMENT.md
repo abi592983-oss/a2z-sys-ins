@@ -17,26 +17,26 @@ This is the historical record of problems discovered while developing and calibr
 ## Initial findings — 2026-09-14
 
 ### DEV-001 — Storage SMART interpretation is too narrow
-- **Problem:** Storage life/endurance recognition currently understands only a small set of attribute names and does not preserve enough normalized ATA SMART fields for robust vendor/controller-aware interpretation.
+- **Problem:** Storage life/endurance recognition previously understood only a small set of attribute names and did not preserve enough normalized ATA SMART fields for robust vendor/controller-aware interpretation.
 - **Date identified:** 2026-09-14
 - **Area:** Storage / SMART interpretation
-- **Impact:** Valid health/endurance information may be missed or reported as unavailable; a CrystalDisk-like storage report cannot yet be produced reliably across device families.
-- **Status:** Open
-- **Date fixed:** —
-- **Ever fixed:** No
-- **Fix / evidence:** Planned for storage evidence model and interpretation passes.
-- **Validation:** Pending real-machine calibration.
+- **Impact:** Valid health/endurance information could be missed or reported as unavailable; a CrystalDisk-like storage report could not yet be produced reliably across device families.
+- **Status:** Fixed — Pass 3 interpretation layer added
+- **Date fixed:** 2026-09-14
+- **Ever fixed:** Yes
+- **Fix / evidence:** Added `StorageInterpretationService` with name-validated ATA semantics, NVMe standard health interpretation, conservative vendor/device-style life-field recognition, and explicit separation of condition from endurance.
+- **Validation:** Code-path review complete; real-machine calibration pending.
 
 ### DEV-002 — Storage scoring is corrected after initial scoring
-- **Problem:** The current inspection sequence calculates scores and then normalizes storage SMART interpretations before advanced assessment. This creates a score-then-correct architecture.
+- **Problem:** The current inspection sequence still calculates scores and then normalizes storage SMART interpretations before advanced assessment. This creates a remaining score-then-normalize compatibility path.
 - **Date identified:** 2026-09-14
 - **Area:** Scoring / pipeline
-- **Impact:** Raw SMART IDs can influence an initial result before semantic validation removes or changes the finding.
+- **Impact:** The architecture remains harder to reason about than a strict interpretation → findings → scoring pipeline, even though Pass 3 now interprets storage before the scorer and prevents invalid legacy SMART IDs from reaching its storage rules.
 - **Status:** Open
 - **Date fixed:** —
 - **Ever fixed:** No
-- **Fix / evidence:** Planned pipeline cleanup after the new interpretation layer is established.
-- **Validation:** Pending.
+- **Fix / evidence:** Pass 3 reduced the risk but did not remove the legacy normalization stage. Full cleanup is planned for Pass 5.
+- **Validation:** Pending Pass 5.
 
 ### DEV-003 — Health percentage/scoring model is not yet calibrated across all problem categories
 - **Problem:** The current rules intentionally avoid an invented overall percentage, but the eventual health percentage and scoring system still needs evidence-based calibration across storage, CPU/thermal, memory, Windows events, PnP and other diagnostic categories rather than being designed as storage-only math.
@@ -92,6 +92,17 @@ This is the historical record of problems discovered while developing and calibr
 - **Ever fixed:** Yes
 - **Fix / evidence:** Added `StorageAcquisitionService` and routed the normal full-system inspection through it. The new layer records device-path/type attempts, identity validation, raw JSON, evidence quality and fallback status without introducing new health thresholds.
 - **Validation:** Code-path review complete; real-machine validation pending.
+
+### DEV-008 — NVMe controller temperature field was mapped from the wrong SMART field
+- **Problem:** Pass 2 acquisition assigned `controller_busy_time` to `NvmeHealthRecord.ControllerTemperatureC`, even though controller busy time is not a temperature measurement.
+- **Date identified:** 2026-09-14
+- **Area:** Storage / NVMe acquisition semantics
+- **Impact:** A report could expose a non-temperature NVMe value as controller temperature, corrupting future thermal interpretation and graphs.
+- **Status:** Open — correction required
+- **Date fixed:** —
+- **Ever fixed:** No
+- **Fix / evidence:** Pass 3 identified the mapping during code review. The top-level `DriveInfoRecord.ControllerTemperatureC` already reads the NVMe `controller_temperature` field, but the nested `NvmeHealthRecord` mapping still needs correction.
+- **Validation:** Pending code correction and real-machine NVMe validation.
 
 ## Status convention
 
