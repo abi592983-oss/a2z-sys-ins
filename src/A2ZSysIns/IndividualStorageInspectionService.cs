@@ -46,7 +46,7 @@ namespace A2ZSysIns
                     Model = drive.Model,
                     Serial = drive.Serial,
                     DeviceType = NormalizeDeviceType(drive),
-                    Transport = string.IsNullOrWhiteSpace(drive.Transport) ? "Unknown" : drive.Transport,
+                    Transport = SafeTransport(drive),
                     SizeBytes = drive.SizeBytes
                 });
             }
@@ -58,7 +58,7 @@ namespace A2ZSysIns
             if (report == null || target == null)
                 return Failure("Inspection report or storage target was not supplied.");
 
-            DriveInfoRecord drive = Resolve(report, target);
+            var drive = Resolve(report, target);
             if (drive == null)
                 return Failure("The selected storage device is no longer present in the inspection report.");
 
@@ -86,7 +86,6 @@ namespace A2ZSysIns
                 var indexed = report.Drives[target.Index];
                 if (Matches(indexed, target)) return indexed;
             }
-
             return report.Drives.FirstOrDefault(x => x != null && Matches(x, target));
         }
 
@@ -108,7 +107,7 @@ namespace A2ZSysIns
             Model = drive.Model,
             Serial = drive.Serial,
             DeviceType = NormalizeDeviceType(drive),
-            Transport = string.IsNullOrWhiteSpace(drive.Transport) ? "Unknown" : drive.Transport,
+            Transport = SafeTransport(drive),
             SizeBytes = drive.SizeBytes
         };
 
@@ -118,15 +117,17 @@ namespace A2ZSysIns
             if (type.IndexOf("nvme", StringComparison.OrdinalIgnoreCase) >= 0) return "NVMe SSD";
             if (type.IndexOf("scsi", StringComparison.OrdinalIgnoreCase) >= 0) return "SCSI/SAS";
             if (type.IndexOf("ata", StringComparison.OrdinalIgnoreCase) >= 0) return "SATA/ATA";
-            if (drive.Transport.IndexOf("USB", StringComparison.OrdinalIgnoreCase) >= 0) return "USB/removable storage";
+            if (SafeTransport(drive).IndexOf("USB", StringComparison.OrdinalIgnoreCase) >= 0) return "USB/removable storage";
             return string.IsNullOrWhiteSpace(type) ? "Unknown storage" : type;
         }
+
+        private static string SafeTransport(DriveInfoRecord drive) =>
+            string.IsNullOrWhiteSpace(drive == null ? null : drive.Transport) ? "Unknown" : drive.Transport;
 
         private static string BuildDisplayName(DriveInfoRecord drive)
         {
             var model = string.IsNullOrWhiteSpace(drive.Model) ? "Unknown drive" : drive.Model.Trim();
-            var type = NormalizeDeviceType(drive);
-            return model + " — " + type;
+            return model + " — " + NormalizeDeviceType(drive);
         }
 
         private static Result Failure(string reason) => new Result
