@@ -1,8 +1,8 @@
 # A2Z System Inspector — Storage Engine State
 
 Last updated: 2026-09-14
-Phase: Pass 1 — Storage evidence data model
-Status: Pass 1 complete
+Phase: Pass 2 — Storage evidence acquisition
+Status: Pass 2 complete
 
 ## Scope
 
@@ -14,7 +14,7 @@ The existing non-storage sensor collection is considered working enough to leave
 
 1. Pass 0 — Baseline / Inventory — complete
 2. Pass 1 — Storage evidence data model — complete
-3. Pass 2 — Storage evidence acquisition
+3. Pass 2 — Storage evidence acquisition — complete
 4. Pass 3 — SMART / storage interpretation engine
 5. Pass 4 — Health, endurance, confidence and percentage/scoring model
 6. Pass 5 — Diagnostic pipeline cleanup and cross-category scoring calibration
@@ -24,40 +24,44 @@ The existing non-storage sensor collection is considered working enough to leave
 10. Pass 9 — Documentation and support matrix
 11. Pass 10 — Real-machine calibration against known-good and known-fault systems
 
-## Pass 1 work completed
+## Pass 2 work completed
 
-`src/A2ZSysIns/Models.cs` now has a richer storage evidence model while retaining the legacy fields needed during migration.
+Added `src/A2ZSysIns/StorageAcquisitionService.cs` and routed the normal full-system inspection through it.
 
-Added structures for:
-- Individual ATA SMART attributes: ID, name, raw value, normalized/current value, worst value, threshold, raw string, interpretation, source and semantic-validation state.
-- NVMe health/endurance: critical warning, available spare, spare threshold, percentage used, media errors, error-log entries, temperatures and data-unit counters.
-- Storage evidence availability/quality/source, device/transport classification, serial validation, capability flags and unavailable-field tracking.
-- Explicit storage and controller temperature fields.
-- Explicit endurance-used percentage and endurance meaning, separate from overall condition/health.
-- SMART source/device type, transport, firmware, vendor and product identity.
+The acquisition layer now:
+- Enumerates physical disks with WMI identity information.
+- Uses smartctl structured JSON as the primary acquisition source.
+- Uses smartctl `--scan-open -j` device/type information when available instead of ignoring the reported device type.
+- Tries automatic and explicit ATA, SAT, NVMe and SCSI acquisition paths without assuming that a transport is supported.
+- Covers SATA HDD/SSD, NVMe, SCSI/SAS and USB/SAT-style paths where the underlying bridge exposes usable evidence.
+- Validates returned serial numbers against the WMI device identity when both are available and rejects mismatched results.
+- Preserves raw SMART JSON and separates acquisition quality from later interpretation.
+- Populates the Pass 1 ATA attribute, NVMe health, temperature, endurance, firmware, vendor/product, transport and evidence-quality structures.
+- Keeps the Windows `MSStorageDriver_FailurePredictData` / `MSStorageDriver_FailurePredictStatus` fallback, matched by PNP identity rather than enumeration order.
+- Records fallback evidence as partial/raw evidence rather than pretending that vendor-specific meaning was recovered.
+- Records unsupported, missing or unreadable SMART evidence as unavailable rather than converting it into a healthy value or a failure.
 
-The legacy `Attributes` dictionary remains temporarily so existing rules continue to compile while later passes migrate consumers to the richer model.
+No new health thresholds or percentage calculations were introduced in Pass 2. The acquisition layer intentionally supplies evidence for Pass 3 interpretation.
 
-No SMART interpretation rules or scoring thresholds were changed in Pass 1.
+## Acquisition design rule
 
-## Important open findings
+The acquisition layer answers **what evidence was obtained and how reliably it was associated with the device**. It does not answer **whether the drive is healthy**. That separation is required before the scoring and percentage model is redesigned.
 
-- Storage life/endurance recognition is still too narrow; the richer model enables the later fix but does not itself fix interpretation.
-- Storage scoring still has the score-then-normalize architecture and must be corrected later.
-- Health percentage/scoring remains intentionally uncalibrated and must eventually cover all diagnostic problem categories.
-- Storage and CPU temperature graphs remain a later UI/reporting task and must use actual captured samples only.
+## Existing limitations retained
+
+- Vendor/controller-specific life interpretation remains open for Pass 3.
+- Storage scoring still has the score-then-normalize architecture and remains open for Pass 5.
+- Overall health percentage/scoring remains uncalibrated and must eventually cover all diagnostic problem categories.
+- Temperature graphs remain a later UI/reporting task and must use actual captured samples only.
 - Individual-drive storage inspection remains a future feature.
 - Storage link-speed capability inference remains deliberately conservative.
 
-## Required development record
+## Files changed in Pass 2
 
-All discovered development problems are recorded separately in `docs/THE_PROBLEMS_WE_FOUND_IN_DEVELOPMENT.md`. Entries retain discovery date, status, fix date when applicable, and whether the issue has ever been fixed. Fixes do not erase history.
-
-## Files changed in Pass 1
-
-- `src/A2ZSysIns/Models.cs` — expanded storage evidence model.
+- `src/A2ZSysIns/StorageAcquisitionService.cs` — new storage acquisition layer.
+- `src/A2ZSysIns/MainWindow.xaml.cs` — full-system inspection now uses the new acquisition layer.
 - `docs/STORAGE_ENGINE_STATE.md` — updated phase/state.
 
 ## Next pass
 
-Pass 2 should migrate storage acquisition so smartctl and the Windows fallback populate the richer evidence model for SATA HDD/SSD, NVMe, USB/removable storage and unsupported/unknown devices without changing health/scoring semantics yet. Unknown or unreadable evidence must remain unavailable rather than being interpreted as failure or health.
+Pass 3 should build the independent SMART/storage interpretation engine on top of the richer evidence model. It should distinguish condition, endurance and unavailable evidence, use device/vendor/controller context where justified, and avoid treating SMART attribute IDs as universal semantics.
