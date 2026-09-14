@@ -16,7 +16,7 @@ jobs:
         uses: microsoft/setup-msbuild@v2
       - name: Build
         run: msbuild A2ZSysIns.sln /p:Configuration=Release /p:Platform=x64 /m
-      - name: Bundle official smartctl 7.5, PawnIO 2.2.0, and notices
+      - name: Bundle official storage tools, PawnIO, and notices
         shell: pwsh
         run: |
           $installer = Join-Path $env:RUNNER_TEMP "smartmontools-7.5.win32-setup.exe"
@@ -25,7 +25,7 @@ jobs:
           $sourceUrl = "https://github.com/smartmontools/smartmontools/releases/download/RELEASE_7_5/smartmontools-7.5.tar.gz"
           Invoke-WebRequest -Uri $binaryUrl -OutFile $installer
           $header = Get-Content -Path $installer -AsByteStream -TotalCount 2
-          if ($header[0] -ne 0x4d -or $header[1] -ne 0x5a) { throw "Official mirror did not return a Windows executable." }
+          if ($header[0] -ne 0x4d -or $header[1] -ne 0x5a) { throw "Official smartmontools mirror did not return a Windows executable." }
           Start-Process -FilePath $installer -ArgumentList @('/S', "/D=$smartRoot") -Wait
           $smartctl = Get-ChildItem -Path $smartRoot -Filter smartctl.exe -Recurse | Select-Object -First 1
           if ($null -eq $smartctl) { throw "smartctl.exe was not found after installing the official package." }
@@ -34,6 +34,23 @@ jobs:
           New-Item -ItemType Directory -Path $tools -Force | Out-Null
           Copy-Item -Path (Join-Path $smartctl.Directory.FullName '*') -Destination $tools -Recurse -Force
           Invoke-WebRequest -Uri $sourceUrl -OutFile (Join-Path $tools "smartmontools-7.5-source.tar.gz")
+
+          # CrystalDiskInfo Standard portable ZIP is MIT-licensed and exposes an
+          # official /CopyExit text export. A2Z invokes it headlessly only as a
+          # last-resort evidence provider; it does not embed CDI's interpretation engine.
+          $cdiZip = Join-Path $env:RUNNER_TEMP "CrystalDiskInfo9_9_2.zip"
+          $cdiExtract = Join-Path $env:RUNNER_TEMP "a2z-crystaldiskinfo"
+          $cdiUrl = "https://sourceforge.net/projects/crystaldiskinfo/files/9.9.2/CrystalDiskInfo9_9_2.zip/download"
+          Invoke-WebRequest -Uri $cdiUrl -OutFile $cdiZip
+          $cdiHash = (Get-FileHash $cdiZip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($cdiHash -ne "01acb3176851a85824d9589c6514e3eb9771eb7f9d5ee58ed9b4e057bd21c7df") { throw "CrystalDiskInfo 9.9.2 SHA-256 verification failed." }
+          Expand-Archive -Path $cdiZip -DestinationPath $cdiExtract -Force
+          $cdiExe = Get-ChildItem -Path $cdiExtract -Recurse -File | Where-Object { $_.Name -in @('DiskInfo64S.exe','DiskInfo64.exe') } | Select-Object -First 1
+          if ($null -eq $cdiExe) { throw "CrystalDiskInfo portable executable was not found after extraction." }
+          $cdiRoot = Join-Path $tools "CrystalDiskInfo"
+          New-Item -ItemType Directory -Path $cdiRoot -Force | Out-Null
+          Copy-Item -Path (Join-Path $cdiExe.Directory.FullName '*') -Destination $cdiRoot -Recurse -Force
+          if (-not (Test-Path (Join-Path $cdiRoot "DiskInfo64.exe")) -and -not (Test-Path (Join-Path $cdiRoot "DiskInfo64S.exe"))) { throw "CrystalDiskInfo executable was not copied into the application package." }
 
           # LibreHardwareMonitor 0.9.6 uses PawnIO 2.2 modules. Keep the official
           # PawnIO installer in the portable package so Inspector can offer the
@@ -50,6 +67,7 @@ jobs:
 
           Copy-Item -Path "THIRD_PARTY_NOTICES.md" -Destination $output -Force
           & (Join-Path $tools "smartctl.exe") --version
+          & (Get-ChildItem -Path $cdiRoot -Filter "DiskInfo64*.exe" | Select-Object -First 1).FullName /Exit
       - name: Upload application
         uses: actions/upload-artifact@v4
         with:
