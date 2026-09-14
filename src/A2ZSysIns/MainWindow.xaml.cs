@@ -33,7 +33,7 @@ namespace A2ZSysIns
                 PortableSessionLog.SetDeviceIdentity(_report.System.ContainsKey("Manufacturer") ? _report.System["Manufacturer"] : null, _report.System.ContainsKey("Model") ? _report.System["Model"] : null, _report.System.ContainsKey("Serial number") ? _report.System["Serial number"] : null);
                 EvidenceEngine.Log(_report, "Portable diagnostic location", PortableSessionLog.PathName);
                 await Step(18, "Measuring resource usage with fallback methods...", () => EvidenceEngine.Resources(_report));
-                await Step(32, "Collecting physical storage and SMART evidence...", () => EvidenceEngine.Drives(_report));
+                await Step(32, "Collecting physical storage and SMART evidence...", () => StorageAcquisitionService.Collect(_report));
                 await Step(48, "Reviewing core Windows events and recorded details...", () => EvidenceEngine.Events(_report));
                 await Step(62, "Collecting advanced correlated evidence...", () => AdvancedDiagnostics.Collect(_report));
                 await Step(78, "Sampling available hardware sensors...", CollectSensorsWithPawnIoFallback);
