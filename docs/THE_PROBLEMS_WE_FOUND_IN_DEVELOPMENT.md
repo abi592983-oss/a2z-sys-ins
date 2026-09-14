@@ -54,22 +54,22 @@ This is the historical record of problems discovered while developing and calibr
 - **Date identified:** 2026-09-14
 - **Area:** UI / reporting
 - **Impact:** Temperature behavior and trends are harder for technicians to interpret from a snapshot.
-- **Status:** Open
+- **Status:** Open — Pass 7 adds graph-safe UI messaging but not fabricated history
 - **Date fixed:** —
 - **Ever fixed:** No
-- **Fix / evidence:** Planned after the evidence model and capture paths can provide trustworthy samples.
-- **Validation:** Pending.
+- **Fix / evidence:** Pass 7 explicitly prevents presentation of a historical storage graph when only a current reading exists. CPU stress samples already provide real elapsed-time temperature data; actual graph rendering remains a later presentation enhancement.
+- **Validation:** Code-path review complete; real capture validation pending.
 
 ### DEV-005 — Individual storage inspection is not yet available
 - **Problem:** The current front-window workflow is a full-system inspection rather than a dedicated per-drive inspection experience.
 - **Date identified:** 2026-09-14
 - **Area:** UI / storage workflow
 - **Impact:** A technician cannot yet select one HDD/SSD/NVMe/removable drive for a focused CrystalDisk-like inspection.
-- **Status:** Open — UI still pending after Pass 6 backend foundation
-- **Date fixed:** —
-- **Ever fixed:** No
-- **Fix / evidence:** Pass 6 added `IndividualStorageInspectionService` with selectable drive targets and a focused inspection result contract. Front-window UI remains the Pass 7 task.
-- **Validation:** Backend code-path review complete; UI and real-machine validation pending.
+- **Status:** Fixed — Pass 7 UI added; live re-acquisition remains a limitation
+- **Date fixed:** 2026-09-14
+- **Ever fixed:** Yes
+- **Fix / evidence:** Pass 6 added `IndividualStorageInspectionService`; Pass 7 added `IndividualStorageInspectionWindow` and an Evidence-screen launch button. The UI uses the backend target/result contract and does not implement SMART rules itself.
+- **Validation:** UI code-path review complete; build/runtime and real-machine validation pending.
 
 ### DEV-006 — Storage link-speed capability is not independently inferred
 - **Problem:** The current advanced storage diagnostics report structured current/maximum interface speed when smartctl exposes it, but do not independently establish PCIe/controller capability.
@@ -114,6 +114,17 @@ This is the historical record of problems discovered while developing and calibr
 - **Ever fixed:** Yes
 - **Fix / evidence:** Added `StorageHealthAssessmentService`, which records condition, condition confidence, endurance availability/value and endurance confidence as separate measurement evidence. No global percentage was introduced.
 - **Validation:** Code-path review complete; real-machine calibration pending.
+
+### DEV-010 — Focused storage inspection must not imply live re-acquisition
+- **Problem:** The new individual storage UI could be mistaken for an independent live drive scan even though Pass 6/7 currently reuse evidence captured by the completed full-system acquisition.
+- **Date identified:** 2026-09-14
+- **Area:** Storage / UI semantics
+- **Impact:** A technician could assume the focused screen refreshed hardware state when it actually reinterprets already-acquired evidence.
+- **Status:** Fixed — UI limitation made explicit
+- **Date fixed:** 2026-09-14
+- **Ever fixed:** Yes
+- **Fix / evidence:** The focused inspector is explicitly described as presentation over acquired evidence, and the UI does not claim live re-acquisition. A future targeted acquisition enhancement can be added behind the same backend contract.
+- **Validation:** Code-path review complete; technician usability validation pending.
 
 ## Status convention
 
