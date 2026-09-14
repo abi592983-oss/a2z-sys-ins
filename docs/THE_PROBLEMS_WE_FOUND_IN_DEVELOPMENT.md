@@ -82,6 +82,17 @@ This is the historical record of problems discovered while developing and calibr
 - **Fix / evidence:** Current design deliberately avoids unsupported controller-capability guesses.
 - **Validation:** Revisit during storage acquisition/calibration.
 
+### DEV-007 — Storage acquisition was tightly coupled to interpretation
+- **Problem:** The previous storage path performed device acquisition, SMART parsing, life interpretation and preliminary assessment in one engine method. This made it difficult to preserve raw evidence for later vendor-aware interpretation and to distinguish unavailable data from health conclusions.
+- **Date identified:** 2026-09-14
+- **Area:** Storage / acquisition architecture
+- **Impact:** Adding broader SATA/NVMe/USB coverage risked mixing acquisition assumptions with health rules.
+- **Status:** Fixed — acquisition layer separated
+- **Date fixed:** 2026-09-14
+- **Ever fixed:** Yes
+- **Fix / evidence:** Added `StorageAcquisitionService` and routed the normal full-system inspection through it. The new layer records device-path/type attempts, identity validation, raw JSON, evidence quality and fallback status without introducing new health thresholds.
+- **Validation:** Code-path review complete; real-machine validation pending.
+
 ## Status convention
 
 A problem marked **Fixed** means a code/documentation change was made. It does not mean the rule is permanently proven. Real-machine validation can reopen an issue if evidence shows the fix is incomplete or introduces a regression.
