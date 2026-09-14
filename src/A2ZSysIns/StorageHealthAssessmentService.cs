@@ -27,6 +27,11 @@ namespace A2ZSysIns
                     Response = "ConditionConfidence=" + result.ConditionConfidence + "; Endurance=" + result.Endurance + "; EnduranceConfidence=" + result.EnduranceConfidence
                 });
             }
+
+            // Pass 5: prepare the cross-category condition/coverage model before
+            // the legacy score builder runs. Numeric overall scoring remains off
+            // until category weights and coverage rules are calibrated.
+            DiagnosticAssessmentService.Record(report);
         }
 
         public static Result Assess(DriveInfoRecord drive)
