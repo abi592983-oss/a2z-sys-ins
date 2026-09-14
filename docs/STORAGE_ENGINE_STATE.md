@@ -2,7 +2,7 @@
 
 Last updated: 2026-09-14
 Phase: Pass 10 — Real-machine calibration and storage acquisition recovery
-Status: Physical-machine testing has begun; the first HP desktop exposed a real packaging/acquisition gap. Recovery is being hardened before the next real-machine run.
+Status: Physical-machine testing has begun; the first HP desktop exposed a real packaging/acquisition gap. Recovery is now implemented and the corrected artifact is awaiting a repeat run.
 
 ## Scope
 
@@ -44,7 +44,7 @@ Windows WMI correctly enumerated both physical drives, and LibreHardwareMonitor 
 
 This is a real packaging/acquisition integration failure, not evidence that either physical drive lacks SMART capability.
 
-The recovery design now adds a headless CrystalDiskInfo `/CopyExit` evidence provider as a last-resort path. The provider is intentionally not an A2Z scoring engine: it exports storage evidence, A2Z matches the result back to the WMI drive identity, and the existing A2Z interpretation/reporting pipeline remains authoritative. The Windows artifact workflow now packages both official smartmontools and CrystalDiskInfo Standard portable files.
+The recovery design now adds a headless CrystalDiskInfo `/CopyExit` evidence provider as a last-resort path. The provider is intentionally not an A2Z scoring engine: it exports storage evidence, A2Z matches the result back to the WMI drive identity, and the existing A2Z interpretation/reporting pipeline remains authoritative. The Windows artifact workflow now packages and verifies both official smartmontools and CrystalDiskInfo Standard portable files.
 
 ## Pass 10 calibration preparation
 
