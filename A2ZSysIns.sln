@@ -4,6 +4,8 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "A2ZSysIns", "src\A2ZSysIns\A2ZSysIns.csproj", "{D20302D4-6BCD-4DA7-927D-87E44FA596A3}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "A2ZSysIns.Tests", "tests\A2ZSysIns.Tests\A2ZSysIns.Tests.csproj", "{7F4A0A4C-6D8B-4C5D-9E42-3B0D8E3F9A21}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -14,5 +16,9 @@ Global
 		{D20302D4-6BCD-4DA7-927D-87E44FA596A3}.Debug|x64.Build.0 = Debug|x64
 		{D20302D4-6BCD-4DA7-927D-87E44FA596A3}.Release|x64.ActiveCfg = Release|x64
 		{D20302D4-6BCD-4DA7-927D-87E44FA596A3}.Release|x64.Build.0 = Release|x64
+		{7F4A0A4C-6D8B-4C5D-9E42-3B0D8E3F9A21}.Debug|x64.ActiveCfg = Debug|x64
+		{7F4A0A4C-6D8B-4C5D-9E42-3B0D8E3F9A21}.Debug|x64.Build.0 = Debug|x64
+		{7F4A0A4C-6D8B-4C5D-9E42-3B0D8E3F9A21}.Release|x64.ActiveCfg = Release|x64
+		{7F4A0A4C-6D8B-4C5D-9E42-3B0D8E3F9A21}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 EndGlobal
