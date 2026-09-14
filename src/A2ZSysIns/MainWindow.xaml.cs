@@ -39,10 +39,8 @@ namespace A2ZSysIns
                 await Step(78, "Sampling available hardware sensors...", CollectSensorsWithPawnIoFallback);
                 await Step(92, "Calculating evidence-based results...", () =>
                 {
-                    // Pass 3: interpret storage evidence before scoring. The compatibility
-                    // projection in StorageInterpretationService prevents raw SMART IDs
-                    // from being treated as universal semantics by the legacy scorer.
                     StorageInterpretationService.Interpret(_report);
+                    StorageHealthAssessmentService.Record(_report);
                     Scoring.Calculate(_report);
                     SmartInterpretation.NormalizeReport(_report);
                     AdvancedAssessment.Apply(_report);
@@ -133,6 +131,7 @@ namespace A2ZSysIns
                 var progress = new Progress<string>(text => { StatusText.Text = text; OverallText.Text = text; });
                 var result = await CpuStressTestService.RunAsync(_report, _stressCancellation.Token, progress);
                 StorageInterpretationService.Interpret(_report);
+                StorageHealthAssessmentService.Record(_report);
                 Scoring.Calculate(_report);
                 SmartInterpretation.NormalizeReport(_report);
                 AdvancedAssessment.Apply(_report);
