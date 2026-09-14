@@ -51,6 +51,10 @@ jobs:
           New-Item -ItemType Directory -Path $cdiRoot -Force | Out-Null
           Copy-Item -Path (Join-Path $cdiExe.Directory.FullName '*') -Destination $cdiRoot -Recurse -Force
           if (-not (Test-Path (Join-Path $cdiRoot "DiskInfo64.exe")) -and -not (Test-Path (Join-Path $cdiRoot "DiskInfo64S.exe"))) { throw "CrystalDiskInfo executable was not copied into the application package." }
+          $cdiRunner = Get-ChildItem -Path $cdiRoot -Filter "DiskInfo64*.exe" | Select-Object -First 1
+          & $cdiRunner.FullName /CopyExit
+          if (-not (Test-Path (Join-Path $cdiRoot "DiskInfo.txt"))) { throw "CrystalDiskInfo /CopyExit did not create DiskInfo.txt." }
+          Remove-Item -Path (Join-Path $cdiRoot "DiskInfo.txt") -Force -ErrorAction SilentlyContinue
 
           # LibreHardwareMonitor 0.9.6 uses PawnIO 2.2 modules. Keep the official
           # PawnIO installer in the portable package so Inspector can offer the
@@ -67,7 +71,6 @@ jobs:
 
           Copy-Item -Path "THIRD_PARTY_NOTICES.md" -Destination $output -Force
           & (Join-Path $tools "smartctl.exe") --version
-          & (Get-ChildItem -Path $cdiRoot -Filter "DiskInfo64*.exe" | Select-Object -First 1).FullName /Exit
       - name: Upload application
         uses: actions/upload-artifact@v4
         with:
