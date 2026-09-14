@@ -5,7 +5,7 @@ Windows-first, offline, read-only PC health inspection and printable reporting t
 ## Version 2 capabilities
 
 - Windows, hardware, RAM, graphics, volume and device information
-- Physical storage inventory with bundled `smartctl` JSON evidence and a Windows ATA SMART fallback
+- Physical storage inventory with bundled `smartctl` JSON evidence, a Windows ATA SMART fallback and a headless CrystalDiskInfo last-resort fallback
 - Bundled live temperature, load, fan, clock and voltage readings through LibreHardwareMonitorLib
 - 30-day evidence for unexpected/initiated shutdowns, bug checks, crash-dump failures, WHEA, Disk, NTFS and repeated application crashes
 - Basic battery and Device Manager condition
@@ -36,13 +36,17 @@ Or from a Visual Studio Developer PowerShell:
 msbuild A2ZSysIns.sln /restore /p:Configuration=Release /p:Platform=x64
 ```
 
+The official Windows artifact workflow additionally downloads and verifies the external storage tools before packaging them. A manually built folder must either use that packaged artifact or provide the portable CrystalDiskInfo folder through `A2Z_CRYSTALDISKINFO_PATH` for the last-resort fallback.
+
 ## Diagnostic adapters
 
-LibreHardwareMonitorLib is restored during the build and included automatically in the downloadable application artifact. The official smartmontools 7.5 Windows build is also bundled, including its corresponding source archive. The technician does not need to download or copy either collector.
+LibreHardwareMonitorLib is restored during the build and included automatically in the downloadable application artifact. The official smartmontools 7.5 Windows build and CrystalDiskInfo Standard portable package are also bundled by the Windows artifact workflow, including the corresponding notices/source where applicable.
 
 The application requests administrator access at launch because low-level temperature, SMART and Event Log access commonly requires elevation. It does not disable Windows security protections.
 
-For storage, the primary method is structured `smartctl` JSON. If that cannot read a drive, the application attempts the Windows `MSStorageDriver_FailurePredictData` and `MSStorageDriver_FailurePredictStatus` providers, matched by PNP ID rather than list order. Unsupported USB bridges, unavailable NVMe/vendor-specific fields and unknown life attributes are explicitly recorded as unavailable. Windows `Status=OK` is never converted into a health percentage.
+For storage, the primary method is structured `smartctl` JSON. If that cannot read a drive, the application attempts the Windows `MSStorageDriver_FailurePredictData` and `MSStorageDriver_FailurePredictStatus` providers, matched by PNP ID rather than list order. If usable SMART evidence is still absent, the application can invoke CrystalDiskInfo headlessly with `/CopyExit`, parse its text export, safely match the drive by serial/model/capacity, and feed the extracted SMART attributes into the existing A2Z interpretation pipeline. CrystalDiskInfo is an evidence provider only; A2Z does not import its UI or replace its own condition/endurance semantics with a copied scoring engine.
+
+Unsupported USB bridges, unavailable NVMe/vendor-specific fields and unknown life attributes are explicitly recorded as unavailable. Windows `Status=OK` is never converted into a health percentage.
 
 The storage support boundary, evidence hierarchy, condition/endurance/confidence semantics and explicit non-claims are documented in `docs/STORAGE_SUPPORT_MATRIX.md`. The focused storage inspector currently reinterprets evidence captured by the completed full-system inspection; it does not claim a fresh live re-acquisition.
 
@@ -58,7 +62,9 @@ System Inspector is an inspection tool. It does not run repair switches, SMART s
 
 Pass 8 synthetic validation is merged into `main` and protects the core evidence/assessment behavior. Pass 9 documents the supported storage boundary in `docs/STORAGE_SUPPORT_MATRIX.md`.
 
-Pass 10 is prepared by `docs/REAL_MACHINE_CALIBRATION.md`. That protocol requires representative physical machines, independent ground truth and preserved logs/JSON. The repository must not claim real-machine validation until those machines have actually been inspected. Reproducible discrepancies are converted into regression fixtures and recorded in `docs/THE_PROBLEMS_WE_FOUND_IN_DEVELOPMENT.md`.
+Pass 10 is prepared by `docs/REAL_MACHINE_CALIBRATION.md`. That protocol requires representative physical machines, independent ground truth and preserved logs/JSON. The first physical HP desktop run exposed a real packaging gap: the tested application package did not contain `smartctl.exe`, so both physical drives were left unassessed by SMART. This is now recorded as DEV-013 and the corrected artifact pipeline includes both smartmontools and a CrystalDiskInfo `/CopyExit` recovery path. The repository must not claim final calibration until the corrected package has been rerun on representative machines.
+
+Reproducible discrepancies are converted into regression fixtures and recorded in `docs/THE_PROBLEMS_WE_FOUND_IN_DEVELOPMENT.md`.
 
 ## Important limitation
 
