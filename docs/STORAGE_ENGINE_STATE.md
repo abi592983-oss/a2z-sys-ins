@@ -1,8 +1,8 @@
 # A2Z System Inspector — Storage Engine State
 
 Last updated: 2026-09-14
-Phase: Pass 7 — Individual storage inspector UI
-Status: Pass 7 complete; real-machine validation pending
+Phase: Pass 8 — Automated/synthetic validation
+Status: Test fixtures and Windows CI added; CI validation currently running; real-machine validation pending
 
 ## Scope
 
@@ -20,28 +20,34 @@ The existing non-storage sensor collection remains unchanged unless a later depe
 6. Pass 5 — Diagnostic pipeline cleanup and cross-category scoring calibration — foundation complete; remaining cleanup retained for later calibration
 7. Pass 6 — Individual storage inspection backend architecture — complete
 8. Pass 7 — UI storage inspector and useful diagnostic graphs — complete; graph capture remains limited by available timestamped samples
-9. Pass 8 — Automated/synthetic validation fixtures
+9. Pass 8 — Automated/synthetic validation fixtures — implementation complete; CI validation pending
 10. Pass 9 — Documentation and support matrix
 11. Pass 10 — Real-machine calibration against known-good and known-fault systems
 
-## Pass 7 work completed
+## Pass 8 work completed
 
-Added a focused storage inspection window:
-- `src/A2ZSysIns/IndividualStorageInspectionWindow.xaml`
-- `src/A2ZSysIns/IndividualStorageInspectionWindow.xaml.cs`
+Created an isolated validation project on branch `testing/pass-8-validation`:
+- `tests/A2ZSysIns.Tests/A2ZSysIns.Tests.csproj`
+- `tests/A2ZSysIns.Tests/StorageValidationTests.cs`
+- `src/A2ZSysIns/Properties/AssemblyInfo.cs` for test access to internal diagnostic services
+- `A2ZSysIns.sln` now includes the test project
 
-The UI is exposed from the existing Evidence screen as `INDIVIDUAL STORAGE INSPECTOR` and is available after a full inspection has acquired storage evidence.
+Synthetic fixtures cover:
+- validated ATA reallocated-sector semantics;
+- rejection of unknown/vendor ATA IDs as universal meanings;
+- validated endurance/life interpretation and condition/endurance separation;
+- NVMe critical warning and percentage-used behavior;
+- unavailable SMART evidence remaining UNKNOWN rather than GOOD;
+- confidence behavior for partial evidence;
+- individual storage target classification, serial-preferred identity matching and safe mismatch handling;
+- cross-category assessment isolation (storage failure does not fabricate thermal failure);
+- missing battery and low-disk-space category behavior;
+- CPU graph samples using only actual captured samples;
+- regression protection against treating a single storage temperature reading as historical data.
 
-The focused screen provides:
-- selectable physical-drive targets from `IndividualStorageInspectionService.GetTargets(report)`;
-- model, serial, device type, transport and capacity identity;
-- condition and condition-confidence result;
-- endurance/life and separate endurance confidence;
-- current drive and controller temperature when actually available;
-- SMART/evidence quality and unavailable-field limitations;
-- an explicit statement that a single temperature reading is not converted into a fabricated historical graph.
+Added `.github/workflows/pass8-validation.yml` to restore, build and run the synthetic test project on Windows for pushes to the validation branch and pull requests to `main`.
 
-The UI does not contain SMART IDs, vendor thresholds or independent health math. It remains presentation over the existing acquisition, interpretation and assessment layers.
+A pull request was opened as PR #4 targeting `main`. The latest CI run is currently in progress; no merge to `main` is authorized until the validation run completes successfully.
 
 ## Graph policy
 
@@ -60,13 +66,6 @@ Pass 5's cross-category scoring foundation remains intentionally conservative. `
 - Individual inspection currently reuses evidence from the completed full-system acquisition; it is not a separate live re-acquisition path.
 - Real-machine validation is still pending.
 
-## Files changed in Pass 7
+## Next step
 
-- `src/A2ZSysIns/IndividualStorageInspectionWindow.xaml` — focused storage inspector UI.
-- `src/A2ZSysIns/IndividualStorageInspectionWindow.xaml.cs` — UI binding/presentation logic.
-- `src/A2ZSysIns/MainWindow.xaml.cs` — exposes the inspector button from the Evidence screen.
-- `docs/STORAGE_ENGINE_STATE.md` — updated phase/state.
-
-## Next pass
-
-Pass 8 should add automated/synthetic validation fixtures for storage interpretation, confidence, unavailable evidence, identity matching and focused inspection presentation. Keep all tests independent of real-machine assumptions; real hardware calibration remains Pass 10.
+Wait for PR #4 CI to complete. If CI fails, diagnose and correct the validation branch, then rerun. If CI passes, review the branch/PR and merge only the validated Pass 8 changes into `main`. After that, continue to Pass 9 documentation/support matrix work and eventually Pass 10 real-machine calibration.
