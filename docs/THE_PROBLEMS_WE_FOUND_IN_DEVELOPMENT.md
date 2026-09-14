@@ -98,11 +98,11 @@ This is the historical record of problems discovered while developing and calibr
 - **Date identified:** 2026-09-14
 - **Area:** Storage / NVMe acquisition semantics
 - **Impact:** A report could expose a non-temperature NVMe value as controller temperature, corrupting future thermal interpretation and graphs.
-- **Status:** Open — correction required
-- **Date fixed:** —
-- **Ever fixed:** No
-- **Fix / evidence:** Pass 3 identified the mapping during code review. The top-level `DriveInfoRecord.ControllerTemperatureC` already reads the NVMe `controller_temperature` field, but the nested `NvmeHealthRecord` mapping still needs correction.
-- **Validation:** Pending code correction and real-machine NVMe validation.
+- **Status:** Fixed — Pass 3 correction
+- **Date fixed:** 2026-09-14
+- **Ever fixed:** Yes
+- **Fix / evidence:** `NvmeHealthRecord.ControllerTemperatureC` now reads the NVMe `controller_temperature` field, and the top-level drive field uses that same value.
+- **Validation:** Code-path review complete; real-machine NVMe validation pending.
 
 ## Status convention
 
