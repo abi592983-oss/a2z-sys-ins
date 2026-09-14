@@ -1,0 +1,30 @@
+name: Pass 8 Validation
+
+on:
+  push:
+    branches:
+      - testing/pass-8-validation
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore A2ZSysIns.sln
+
+      - name: Build
+        run: dotnet build A2ZSysIns.sln --configuration Release --no-restore -p:Platform=x64
+
+      - name: Run synthetic validation tests
+        run: dotnet test tests/A2ZSysIns.Tests/A2ZSysIns.Tests.csproj --configuration Release --no-build --no-restore
