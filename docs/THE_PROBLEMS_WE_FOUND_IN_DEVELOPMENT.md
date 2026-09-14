@@ -65,11 +65,11 @@ This is the historical record of problems discovered while developing and calibr
 - **Date identified:** 2026-09-14
 - **Area:** UI / storage workflow
 - **Impact:** A technician cannot yet select one HDD/SSD/NVMe/removable drive for a focused CrystalDisk-like inspection.
-- **Status:** Open — planned future feature
+- **Status:** Open — UI still pending after Pass 6 backend foundation
 - **Date fixed:** —
 - **Ever fixed:** No
-- **Fix / evidence:** Planned as a later backend/UI milestone after storage interpretation is stable.
-- **Validation:** Pending.
+- **Fix / evidence:** Pass 6 added `IndividualStorageInspectionService` with selectable drive targets and a focused inspection result contract. Front-window UI remains the Pass 7 task.
+- **Validation:** Backend code-path review complete; UI and real-machine validation pending.
 
 ### DEV-006 — Storage link-speed capability is not independently inferred
 - **Problem:** The current advanced storage diagnostics report structured current/maximum interface speed when smartctl exposes it, but do not independently establish PCIe/controller capability.
