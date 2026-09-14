@@ -35,8 +35,8 @@ This is the historical record of problems discovered while developing and calibr
 - **Status:** Open
 - **Date fixed:** —
 - **Ever fixed:** No
-- **Fix / evidence:** Pass 3 reduced the risk but did not remove the legacy normalization stage. Full cleanup is planned for Pass 5.
-- **Validation:** Pending Pass 5.
+- **Fix / evidence:** Pass 3 reduced the risk but did not remove the legacy normalization stage. Full cleanup is retained as technical debt for a future scoring refactor.
+- **Validation:** Pending future scoring cleanup.
 
 ### DEV-003 — Health percentage/scoring model is not yet calibrated across all problem categories
 - **Problem:** The current rules intentionally avoid an invented overall percentage, but the eventual health percentage and scoring system still needs evidence-based calibration across storage, CPU/thermal, memory, Windows events, PnP and other diagnostic categories rather than being designed as storage-only math.
@@ -46,8 +46,8 @@ This is the historical record of problems discovered while developing and calibr
 - **Status:** Open
 - **Date fixed:** —
 - **Ever fixed:** No
-- **Fix / evidence:** Planned cross-category scoring/calibration pass and real-machine validation.
-- **Validation:** Pending.
+- **Fix / evidence:** Pass 10 defines the real-machine calibration protocol. No numeric percentage is introduced until representative evidence justifies it.
+- **Validation:** Physical calibration pending.
 
 ### DEV-004 — Diagnostic graphs are not yet part of the evidence presentation
 - **Problem:** The current report/UI does not yet provide useful time-series graphs for captured measurements such as storage temperature and CPU temperature.
@@ -125,6 +125,28 @@ This is the historical record of problems discovered while developing and calibr
 - **Ever fixed:** Yes
 - **Fix / evidence:** The focused inspector is explicitly described as presentation over acquired evidence, and the UI does not claim live re-acquisition. A future targeted acquisition enhancement can be added behind the same backend contract.
 - **Validation:** Code-path review complete; technician usability validation pending.
+
+### DEV-011 — Support claims need an explicit evidence boundary
+- **Problem:** Storage support spans SATA/ATA, SAT, NVMe, SCSI/SAS and USB/removable paths, but without a normative matrix it is easy for documentation or UI wording to imply that every device exposes every SMART, temperature or endurance field.
+- **Date identified:** 2026-09-14
+- **Area:** Documentation / support semantics
+- **Impact:** Overstated support could make unavailable evidence look like an acquisition failure or, worse, imply a healthy result from missing data.
+- **Status:** Fixed — Pass 9 support matrix added
+- **Date fixed:** 2026-09-14
+- **Ever fixed:** Yes
+- **Fix / evidence:** Added `docs/STORAGE_SUPPORT_MATRIX.md`, defining supported acquisition paths, evidence hierarchy, confidence boundaries, unavailable-field behavior, explicit non-claims and focused-inspector limitations.
+- **Validation:** Documentation/code-path review complete; real-device coverage remains pending.
+
+### DEV-012 — Real-machine calibration has not yet been executed
+- **Problem:** Synthetic fixtures can validate deterministic semantics but cannot establish that real Windows controllers, firmware, USB bridges and physical devices expose evidence as expected.
+- **Date identified:** 2026-09-14
+- **Area:** Validation / calibration
+- **Impact:** Real-world false positives, false negatives, missing fields and identity/acquisition quirks could remain undiscovered.
+- **Status:** Open — Pass 10 protocol implemented
+- **Date fixed:** —
+- **Ever fixed:** No
+- **Fix / evidence:** Added `docs/REAL_MACHINE_CALIBRATION.md` with representative machine classes, controlled capture procedure, ground-truth requirements, worksheet, pass/fail rules and regression handling. No physical result is claimed by the repository.
+- **Validation:** Pending actual machine captures.
 
 ## Status convention
 
