@@ -19,6 +19,7 @@ jobs:
       - name: Bundle official storage tools, PawnIO, and notices
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $installer = Join-Path $env:RUNNER_TEMP "smartmontools-7.5.win32-setup.exe"
           $smartRoot = Join-Path $env:RUNNER_TEMP "a2z-smartmontools"
           $binaryUrl = "https://github.com/smartmontools/smartmontools/releases/download/RELEASE_7_5/smartmontools-7.5.win32-setup.exe"
@@ -35,11 +36,9 @@ jobs:
           Copy-Item -Path (Join-Path $smartctl.Directory.FullName '*') -Destination $tools -Recurse -Force
           Invoke-WebRequest -Uri $sourceUrl -OutFile (Join-Path $tools "smartmontools-7.5-source.tar.gz")
 
-          # CrystalDiskInfo is obtained through its version-pinned Chocolatey
-          # package because the SourceForge download endpoint can return a CDN
-          # variant whose bytes do not match the published archive hash. The
-          # package contains the upstream portable archive; we verify the ZIP
-          # itself before extracting it.
+          # CrystalDiskInfo's supported /CopyExit workflow writes DiskInfo.txt
+          # beside the executable. Keep the entire portable directory intact,
+          # and run the console-capable DiskInfo64S.exe when it is available.
           $cdiNupkg = Join-Path $env:RUNNER_TEMP "crystaldiskinfo.portable.9.9.2.nupkg"
           $cdiNupkgUrl = "https://community.chocolatey.org/api/v2/package/crystaldiskinfo.portable/9.9.2"
           Invoke-WebRequest -Uri $cdiNupkgUrl -OutFile $cdiNupkg
@@ -54,20 +53,42 @@ jobs:
           $cdiHash = (Get-FileHash $cdiZip.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($cdiHash -ne "01acb3176851a85824d9589c6514e3eb9771eb7f9d5ee58ed9b4e057bd21c7df") { throw "CrystalDiskInfo 9.9.2 upstream ZIP SHA-256 verification failed." }
           Expand-Archive -Path $cdiZip.FullName -DestinationPath $cdiExtract -Force
-          $cdiExe = Get-ChildItem -Path $cdiExtract -Recurse -File | Where-Object { $_.Name -in @('DiskInfo64S.exe','DiskInfo64.exe') } | Select-Object -First 1
-          if ($null -eq $cdiExe) { throw "CrystalDiskInfo portable executable was not found after extraction." }
-          $cdiRoot = Join-Path $tools "CrystalDiskInfo"
-          New-Item -ItemType Directory -Path $cdiRoot -Force | Out-Null
-          Copy-Item -Path (Join-Path $cdiExe.Directory.FullName '*') -Destination $cdiRoot -Recurse -Force
-          $cdiRunner = Get-ChildItem -Path $cdiRoot -Filter "DiskInfo64*.exe" | Select-Object -First 1
-          if ($null -eq $cdiRunner) { throw "CrystalDiskInfo executable was not copied into the application package." }
-          & $cdiRunner.FullName /CopyExit
-          if (-not (Test-Path (Join-Path $cdiRoot "DiskInfo.txt"))) { throw "CrystalDiskInfo /CopyExit did not create DiskInfo.txt." }
-          Remove-Item -Path (Join-Path $cdiRoot "DiskInfo.txt") -Force -ErrorAction SilentlyContinue
 
-          # PawnIO is an optional hardware-access helper. Keep the verified
-          # installer in the artifact, but do not make the application build
-          # depend on an unverified installer checksum.
+          $cdiExe = Get-ChildItem -Path $cdiExtract -Recurse -File |
+            Where-Object { $_.Name -in @('DiskInfo64S.exe','DiskInfo64.exe') } |
+            Sort-Object @{Expression={ if ($_.Name -eq 'DiskInfo64S.exe') { 0 } else { 1 } }} |
+            Select-Object -First 1
+          if ($null -eq $cdiExe) { throw "CrystalDiskInfo portable executable was not found after extraction." }
+
+          # Copy the complete portable directory, not only the executable.
+          # CrystalDiskInfo depends on CdiResource and vendor bridge DLLs.
+          $cdiRootSource = $cdiExe.Directory.FullName
+          $cdiRoot = Join-Path $tools "CrystalDiskInfo"
+          Remove-Item -Path $cdiRoot -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $cdiRoot -Force | Out-Null
+          Copy-Item -Path (Join-Path $cdiRootSource '*') -Destination $cdiRoot -Recurse -Force
+
+          $cdiRunner = Get-ChildItem -Path $cdiRoot -File |
+            Where-Object { $_.Name -in @('DiskInfo64S.exe','DiskInfo64.exe') } |
+            Sort-Object @{Expression={ if ($_.Name -eq 'DiskInfo64S.exe') { 0 } else { 1 } }} |
+            Select-Object -First 1
+          if ($null -eq $cdiRunner) { throw "CrystalDiskInfo executable was not copied into the application package." }
+
+          # /CopyExit may need the working directory to be the executable
+          # directory. Invoke with a clean process and capture diagnostics.
+          $cdiReport = Join-Path $cdiRoot "DiskInfo.txt"
+          Remove-Item -Path $cdiReport -Force -ErrorAction SilentlyContinue
+          $cdiProcess = Start-Process -FilePath $cdiRunner.FullName -ArgumentList '/CopyExit' -WorkingDirectory $cdiRoot -Wait -PassThru -WindowStyle Hidden
+          if ($cdiProcess.ExitCode -ne 0) { throw "CrystalDiskInfo /CopyExit exited with code $($cdiProcess.ExitCode)." }
+          if (-not (Test-Path $cdiReport)) {
+            $diagnosticFiles = Get-ChildItem -Path $cdiRoot -File | Select-Object -ExpandProperty Name
+            throw "CrystalDiskInfo /CopyExit did not create DiskInfo.txt. Files beside executable: $($diagnosticFiles -join ', ')"
+          }
+          Remove-Item -Path $cdiReport -Force -ErrorAction SilentlyContinue
+
+          # PawnIO is an optional hardware-access helper. Keep the installer in
+          # the artifact, but do not make the application build depend on an
+          # unverified installer checksum.
           $pawnDir = Join-Path $tools "pawnio/2.2.0"
           New-Item -ItemType Directory -Path $pawnDir -Force | Out-Null
           $pawnUrl = "https://github.com/namazso/PawnIO.Setup/releases/download/2.2.0/PawnIO_setup.exe"
