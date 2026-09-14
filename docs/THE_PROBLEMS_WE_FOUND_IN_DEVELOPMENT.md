@@ -148,6 +148,17 @@ This is the historical record of problems discovered while developing and calibr
 - **Fix / evidence:** Added `docs/REAL_MACHINE_CALIBRATION.md` with representative machine classes, controlled capture procedure, ground-truth requirements, worksheet, pass/fail rules and regression handling. No physical result is claimed by the repository.
 - **Validation:** Pending actual machine captures.
 
+### DEV-013 — Real-machine package omitted the primary SMART executable
+- **Problem:** The first physical HP desktop run correctly enumerated both a Seagate HDD and an HS-SSD-WAVE SSD, but the actual application package reported `Bundled smartctl.exe is missing from the application package` and skipped SMART acquisition for both drives.
+- **Date identified:** 2026-09-14
+- **Area:** Storage / packaging / acquisition integration
+- **Impact:** Both real drives were reported as `Not assessed` even though independent hardware tooling exposed SMART attributes, temperatures and SSD life data. This made the storage diagnostic appear substantially worse than the actual evidence availability.
+- **Status:** Fixed in code/package pipeline; physical verification pending
+- **Date fixed:** 2026-09-14
+- **Ever fixed:** Yes
+- **Fix / evidence:** The Windows build now verifies and packages official smartmontools and adds a headless CrystalDiskInfo `/CopyExit` last-resort provider. CrystalDiskInfo evidence is matched to the WMI drive identity and fed into the existing A2Z interpretation/reporting pipeline rather than replacing it.
+- **Validation:** Real-machine discovery confirmed the failure. Corrected artifact build and repeat run on the same HP machine are pending.
+
 ## Status convention
 
 A problem marked **Fixed** means a code/documentation change was made. It does not mean the rule is permanently proven. Real-machine validation can reopen an issue if evidence shows the fix is incomplete or introduces a regression.
