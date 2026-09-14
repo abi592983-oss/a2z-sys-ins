@@ -1,92 +1,88 @@
 # A2Z System Inspector — Storage Support Matrix
 
-Last reviewed: 2026-09-14
-Ruleset: `2.0-evidence-only`
+## Purpose
 
-This document defines what the storage subsystem is allowed to claim. A detected device is not automatically a fully measurable device. Unsupported or missing evidence is reported as unavailable rather than converted into a healthy result.
+This document is the normative boundary for storage support. "Supported" means A2Z has an acquisition path and can preserve evidence when the device/controller exposes it; it does not mean every SMART, temperature or endurance field is guaranteed on every device.
+
+## Acquisition order
+
+1. `smartctl` structured JSON is the primary storage provider.
+2. Windows `MSStorageDriver_FailurePredictData` / `MSStorageDriver_FailurePredictStatus` is the ATA fallback, matched by unique PNP identity rather than enumeration order.
+3. CrystalDiskInfo Standard portable `/CopyExit` is the last-resort evidence provider when the preceding paths produce no usable SMART evidence.
+4. If all providers fail, the drive remains present in the report with explicit unavailable evidence; missing SMART is never interpreted as healthy.
 
 ## Device-family matrix
 
-| Device family | Inventory | Primary evidence | Temperature | Endurance/life | Current confidence boundary |
-|---|---|---|---|---|---|
-| SATA/ATA HDD | Supported | ATA SMART through smartctl | When exposed | Usually unavailable unless a validated life field exists | Evidence-dependent |
-| SATA/ATA SSD | Supported | ATA SMART through smartctl | When exposed | Vendor/controller-dependent; only validated fields | Evidence-dependent |
-| SATA device behind SAT | Supported when bridge exposes evidence | ATA SMART through SAT/smartctl | Bridge-dependent | Bridge/device-dependent | Conservative |
-| NVMe SSD | Supported | NVMe health data through smartctl | When exposed | Standard Percentage Used / validated fields | Evidence-dependent |
-| SCSI/SAS | Inventory supported; health evidence device-dependent | SCSI health/log evidence when exposed | When exposed | Device-dependent | Conservative |
-| USB/removable storage | Inventory supported | SMART only when the USB bridge exposes usable evidence | Bridge-dependent | Bridge/device-dependent | Conservative |
-| Unsupported/opaque bridge | Inventory may still succeed | No trustworthy SMART/health evidence | Usually unavailable | Unavailable | Unknown / unavailable |
+| Device family / transport | Acquisition | Typical evidence | Important limitation |
+|---|---|---|---|
+| SATA / ATA HDD | `smartctl`; Windows ATA fallback | SMART table, SMART status, temperature when exposed, power-on counters, vendor life fields when explicitly reported | Attribute semantics are not universal; vendor-specific life fields may remain unavailable |
+| SATA SSD | `smartctl`; Windows ATA fallback; CrystalDiskInfo fallback | SMART table, temperature when exposed, vendor/controller endurance indicators | Endurance interpretation is only used when the field semantics are explicit/validated |
+| NVMe SSD | `smartctl`; CrystalDiskInfo fallback where supported | Critical warning, available spare, spare threshold, percentage used, media errors, error log count, temperature and controller temperature when exposed | Driver/controller configuration can limit access; vendor-specific fields remain unavailable unless validated |
+| SCSI / SAS | `smartctl` where the Windows path exposes the device | SCSI health/error evidence and device metadata | Coverage is deliberately conservative |
+| USB / SAT | `smartctl` or CrystalDiskInfo when the bridge exposes SAT/SMART | ATA SMART through the bridge, temperature/endurance when exposed | USB bridge firmware can hide or transform SMART; unavailable is expected for some devices |
+| USB/removable without SMART exposure | Device inventory only | Model/serial/capacity and other Windows-visible metadata | No SMART health conclusion is inferred |
+| RAID/controller abstraction | Provider-dependent | Whatever the controller exposes | Do not infer member-drive health from array status alone |
 
-"Supported" means the application has an acquisition/interpretation path. It does not mean every field is guaranteed on every controller, bridge, firmware or driver combination.
+## Evidence semantics
 
-## Evidence hierarchy
+### Condition
 
-1. Structured `smartctl` JSON is the primary storage evidence source.
-2. Windows `MSStorageDriver_FailurePredictData` / `MSStorageDriver_FailurePredictStatus` is a fallback for supported ATA devices when primary evidence cannot be obtained.
-3. Raw evidence is preserved where available, including source, device type, transport and identity information.
-4. Vendor-specific or unknown SMART attributes remain evidence but are not assigned universal meanings from attribute ID alone.
+Condition answers whether available evidence contains current failure/problem indicators.
 
-## Condition vs endurance
+- `CRITICAL` — a validated critical indicator is present.
+- `ATTENTION` — a validated non-critical error/condition indicator is present.
+- `GOOD-NO FLAGGED INDICATOR` — available evidence was measured and no rule-recognized problem indicator was found.
+- `UNKNOWN` / `NOT ASSESSED` — insufficient evidence exists to make a condition claim.
 
-**Condition** answers whether available evidence contains a current storage problem indicator.
+### Endurance
 
-**Endurance/life** answers whether the device reports a wear/lifetime estimate that can be interpreted with validated semantics.
+Endurance is a device-reported wear/life estimate, not a probability of failure and not the overall health score.
 
-They are independent dimensions. For example, a drive can have a good current condition assessment while reporting low remaining endurance. Conversely, an SSD can have no usable endurance field while still having no flagged condition indicator.
+For example, a drive can legitimately report:
 
-An endurance percentage is **not** a probability of failure and is **not** the application's overall health percentage.
+> Condition: Good — no flagged indicator
+>
+> Endurance: 36% remaining
 
-## Confidence
+The two values must remain separate.
 
-Confidence describes evidence completeness and semantic trust, not certainty about future failure.
+### Confidence
 
-- **High:** relevant health evidence is present and its semantics are validated for the device/field.
-- **Moderate:** useful evidence is present but important fields are missing or the source is partial.
-- **Low:** only limited/partial evidence is available, or important identity/health fields cannot be validated.
-- **Unknown:** no trustworthy condition evidence is available.
+Confidence reflects evidence completeness/quality. It does not turn unavailable fields into healthy evidence.
 
-Missing data reduces coverage/confidence. It must never be silently treated as a healthy measurement.
+## Identity safety
 
-## SMART semantic rules
+Every storage result must be associated with the WMI physical-drive identity. Where a provider exposes a serial number, A2Z validates it. For CrystalDiskInfo text output, matching is:
 
-The interpreter validates ATA semantics by attribute meaning/name rather than assuming that an ID has one universal meaning across every vendor/controller.
+1. exact serial match;
+2. otherwise unique model match;
+3. otherwise unique model + capacity match within a small tolerance;
+4. otherwise reject the result rather than risk assigning SMART data to the wrong physical drive.
 
-Known classes include reallocated sectors, pending sectors, offline uncorrectable sectors and interface CRC errors when the attribute semantics are validated. NVMe standard health fields include critical warning, available spare/threshold, percentage used, media/data integrity errors and error-log information when exposed.
+## CrystalDiskInfo fallback boundary
 
-Vendor-specific endurance indicators are accepted only when their semantics can be established from the evidence. Unknown IDs remain unknown.
+CrystalDiskInfo is used as an external evidence provider only. A2Z invokes its documented `/CopyExit` mode, reads the resulting `DiskInfo.txt`, extracts the drive identity and SMART rows, and passes the resulting evidence into the existing A2Z storage interpretation pipeline.
 
-## Interface/link reporting
+A2Z does not copy CrystalDiskInfo's user interface or use its overall health display as the A2Z overall health percentage.
 
-Current and maximum interface speed are reported when structured evidence exposes them. The application deliberately does not infer motherboard PCIe generation or controller capability from incomplete evidence. Link observations are informational unless stronger evidence exists.
-
-## Individual storage inspector
-
-The focused inspector can classify and select HDD/SSD/NVMe/SCSI/SAS/USB-removable targets from the completed acquisition. Identity matching prefers serial number and falls back to model plus capacity.
-
-Current limitation: the focused inspector reinterprets evidence already acquired by the full-system inspection. It is not a separate live physical-drive acquisition path.
+The current Windows artifact packages the Standard portable CrystalDiskInfo 9.9.2 files and verifies the official ZIP SHA-256 before packaging. Manual deployments can point A2Z at another portable copy using `A2Z_CRYSTALDISKINFO_PATH`.
 
 ## Temperature and graph policy
 
-A current storage temperature is a point-in-time observation. It is not a history.
+A current storage temperature is valid snapshot evidence. It is not a historical series. A2Z must not fabricate a storage temperature graph from a single reading.
 
-The application must only render a storage temperature graph when timestamped storage-temperature samples have actually been captured. It must never construct historical points from a single current reading or from assumed values.
-
-CPU stress samples contain actual elapsed-time temperature observations and may be graphed. A future storage capture series can be added without changing the individual-inspection result contract.
+Future storage history graphs require real timestamped samples captured by the application.
 
 ## Explicit non-claims
 
-The storage subsystem does not claim that:
+A2Z does not claim that:
 
-- SMART can predict every future drive failure;
-- Windows `Status=OK` proves storage health;
-- missing SMART proves a drive is healthy;
 - every USB bridge exposes SMART;
-- every SSD exposes a universal endurance percentage;
-- an endurance percentage is overall health;
-- interface speed alone proves controller capability;
-- a focused inspection is a fresh live scan;
-- a short temperature sample proves long-term thermal behavior.
-
-## Pass 10 acceptance boundary
-
-This matrix is the reference against which real-machine observations are compared. Any real device that violates an assumption must produce a new development-history entry and a targeted correction rather than a silent semantic expansion.
+- every NVMe controller exposes every vendor-specific field;
+- a reported endurance percentage predicts failure probability;
+- Windows `Status=OK` proves drive health;
+- an interface speed mismatch proves a controller fault;
+- one provider's inability to read SMART proves the physical drive has no SMART support;
+- a focused inspection currently performs a fresh physical re-acquisition;
+- a current temperature reading represents historical thermal behavior;
+- the current evidence justifies a universal overall health percentage.
