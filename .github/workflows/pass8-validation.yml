@@ -27,4 +27,4 @@ jobs:
         run: dotnet build A2ZSysIns.sln --configuration Release --no-restore -p:Platform=x64
 
       - name: Run synthetic validation tests
-        run: dotnet test tests/A2ZSysIns.Tests/A2ZSysIns.Tests.csproj --configuration Release --no-build --no-restore
+        run: dotnet test tests/A2ZSysIns.Tests/A2ZSysIns.Tests.csproj --configuration Release --no-build --no-restore -p:Platform=x64
