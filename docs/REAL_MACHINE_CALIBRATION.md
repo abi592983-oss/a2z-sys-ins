@@ -44,7 +44,7 @@ A2Z uses the following order:
 
 1. `smartctl` structured JSON.
 2. Windows `MSStorageDriver_FailurePredictData` / `MSStorageDriver_FailurePredictStatus` fallback where uniquely matched by PNP identity.
-3. Headless CrystalDiskInfo Standard `/CopyExit` as a last-resort evidence provider.
+3. Headless CrystalDiskInfo Standard `/CopyExit` as a last-resort evidence provider when the preceding paths produce no usable SMART evidence.
 
 The CrystalDiskInfo fallback is deliberately narrow. It exports evidence to A2Z; it does not replace A2Z's condition/endurance semantics or introduce CrystalDiskInfo's UI/health score as A2Z's overall score. The extracted text must be matched to the WMI drive by serial first, then model/capacity only when the match is unique.
 
