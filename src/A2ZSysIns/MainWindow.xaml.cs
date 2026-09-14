@@ -52,7 +52,7 @@ namespace A2ZSysIns
                 EvidenceEngine.Log(_report, "Session completed", "Completed at " + _report.CompletedAt.ToString("o") + "; measurements=" + _report.Measurements.Count + "; findings=" + _report.Findings.Count);
                 OverallText.Text = "Assessment: " + _report.OverallStatus; InspectionIdText.Text = "Inspection " + _report.InspectionId; ResultsList.ItemsSource = _report.Scores; ReportViewer.Document = DarkReportPreviewService.Build(_report); Tabs.SelectedIndex = 2;
             }
-            catch (Exception ex) { if (_report != null) EvidenceEngine.Log(_report, "Unhandled inspection error", ex.ToString()); MessageBox.Show(this, "The inspection could not complete. Temporary Inspector-owned resources will be cleaned where applicable; see the retained diagnostic log.\n\n" + ex.GetBaseException().Message, "Inspection error", MessageBoxButton.OK, MessageBoxImage.Error); StatusText.Text = "Inspection stopped"; }
+            catch (Exception ex) { if (_report != null) EvidenceEngine.Log(_report, "Unhandled inspection error", ex.ToString()); MessageBox.Show(this, "The inspection could not complete. Temporary Inspector-owned resources will be cleaned where applicable; see the retained diagnostic log.\n\n" + ex.GetBaseException().Message, "A2Z System Inspector", MessageBoxButton.OK, MessageBoxImage.Error); StatusText.Text = "Inspection stopped"; }
             finally { if (_report != null) DriverAccessManager.CleanupOwnedPawnIo(_report, "inspection finished"); StartButton.IsEnabled = true; }
         }
 
@@ -113,7 +113,7 @@ namespace A2ZSysIns
             {
                 EvidenceEngine.Log(_report, "PDF export failed", ex.ToString());
                 StatusText.Text = "PDF export failed";
-                MessageBox.Show(this, "The PDF could not be generated. The report data is still safe and the application will remain usable.\n\n" + ex.GetBaseException().Message, "Inspection error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(this, "The PDF could not be generated. The report data is still safe and the application will remain usable.\n\n" + ex.GetBaseException().Message, "A2Z System Inspector", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally { SavePdfButton.IsEnabled = true; }
         }
