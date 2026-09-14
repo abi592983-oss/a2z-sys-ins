@@ -104,6 +104,17 @@ This is the historical record of problems discovered while developing and calibr
 - **Fix / evidence:** `NvmeHealthRecord.ControllerTemperatureC` now reads the NVMe `controller_temperature` field, and the top-level drive field uses that same value.
 - **Validation:** Code-path review complete; real-machine NVMe validation pending.
 
+### DEV-009 — Storage condition and endurance were not represented as independent assessment dimensions
+- **Problem:** Before Pass 4, the storage model had a remaining-life field and a general assessment, but no explicit persisted distinction between condition confidence and endurance confidence.
+- **Date identified:** 2026-09-14
+- **Area:** Storage / assessment model
+- **Impact:** Future scoring could accidentally collapse endurance into overall health or treat unavailable endurance as evidence of failure/health.
+- **Status:** Fixed — Pass 4 assessment model added
+- **Date fixed:** 2026-09-14
+- **Ever fixed:** Yes
+- **Fix / evidence:** Added `StorageHealthAssessmentService`, which records condition, condition confidence, endurance availability/value and endurance confidence as separate measurement evidence. No global percentage was introduced.
+- **Validation:** Code-path review complete; real-machine calibration pending.
+
 ## Status convention
 
 A problem marked **Fixed** means a code/documentation change was made. It does not mean the rule is permanently proven. Real-machine validation can reopen an issue if evidence shows the fix is incomplete or introduces a regression.
