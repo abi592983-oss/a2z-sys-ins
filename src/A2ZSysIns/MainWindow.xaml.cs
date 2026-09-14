@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 
 namespace A2ZSysIns
 {
@@ -19,6 +20,26 @@ namespace A2ZSysIns
             MaxHeight = area.Height;
             Width = Math.Min(1080, Math.Max(MinWidth, area.Width - 24));
             Height = Math.Min(680, Math.Max(MinHeight, area.Height - 24));
+            AddStorageInspectorButton();
+        }
+
+        private void AddStorageInspectorButton()
+        {
+            var grid = ResultsList.Parent as Grid;
+            if (grid == null) return;
+            var console = grid.Children.OfType<ScrollViewer>().FirstOrDefault(x => Grid.GetRow(x) == 2);
+            var panel = console == null ? null : console.Content as WrapPanel;
+            if (panel == null) return;
+            var button = new Button { Content = "INDIVIDUAL STORAGE INSPECTOR", ToolTip = "Inspect one physical drive using the same evidence and interpretation engine." };
+            button.Click += IndividualStorageInspector_Click;
+            panel.Children.Insert(0, button);
+        }
+
+        private void IndividualStorageInspector_Click(object sender, RoutedEventArgs e)
+        {
+            if (!Ready()) return;
+            var window = new IndividualStorageInspectionWindow(_report) { Owner = this };
+            window.ShowDialog();
         }
 
         private async void Start_Click(object sender, RoutedEventArgs e)
