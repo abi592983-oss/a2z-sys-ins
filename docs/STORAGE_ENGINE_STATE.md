@@ -1,8 +1,8 @@
 # A2Z System Inspector — Storage Engine State
 
 Last updated: 2026-09-14
-Phase: Pass 10 — Real-machine calibration
-Status: Pass 9 documentation/support matrix implemented; Pass 10 calibration protocol implemented; physical-machine execution pending
+Phase: Pass 10 — Real-machine calibration and storage acquisition recovery
+Status: Physical-machine testing has begun; the first HP desktop exposed a real packaging/acquisition gap. Recovery is being hardened before the next real-machine run.
 
 ## Scope
 
@@ -22,7 +22,7 @@ The existing non-storage sensor collection remains unchanged unless a later depe
 8. Pass 7 — UI storage inspector and useful diagnostic graphs — complete; graph capture remains limited by available timestamped samples
 9. Pass 8 — Automated/synthetic validation fixtures — complete and merged to `main`
 10. Pass 9 — Documentation and support matrix — implemented
-11. Pass 10 — Real-machine calibration against known-good and known-fault systems — protocol implemented; physical execution pending
+11. Pass 10 — Real-machine calibration against known-good and known-fault systems — active
 
 ## Pass 8 validation
 
@@ -34,19 +34,23 @@ Added `docs/STORAGE_SUPPORT_MATRIX.md` as the normative storage support boundary
 
 The documentation deliberately distinguishes "supported acquisition path" from "every field guaranteed on every device". Missing evidence remains unavailable and does not become a healthy result.
 
+## Pass 10 physical calibration — first real-machine finding
+
+The first real-machine run was performed on a Hewlett-Packard 23-d250ee desktop with:
+- `ST1000DM003-1CH162` 1 TB Seagate HDD;
+- `HS-SSD-WAVE(S) 256G` 256 GB SSD.
+
+Windows WMI correctly enumerated both physical drives, and LibreHardwareMonitor independently exposed per-drive temperatures. The storage step, however, recorded `smartctl.exe` as unavailable because the manually run application package did not contain the executable. The two drives therefore remained `Not assessed` for SMART despite the machine exposing useful storage evidence through other tooling.
+
+This is a real packaging/acquisition integration failure, not evidence that either physical drive lacks SMART capability.
+
+The recovery design now adds a headless CrystalDiskInfo `/CopyExit` evidence provider as a last-resort path. The provider is intentionally not an A2Z scoring engine: it exports storage evidence, A2Z matches the result back to the WMI drive identity, and the existing A2Z interpretation/reporting pipeline remains authoritative. The Windows artifact workflow now packages both official smartmontools and CrystalDiskInfo Standard portable files.
+
 ## Pass 10 calibration preparation
 
-Added `docs/REAL_MACHINE_CALIBRATION.md` containing:
-- representative known-good and known-fault machine categories;
-- a controlled capture procedure;
-- storage and cross-category observations to record;
-- a calibration worksheet;
-- pass/fail rules;
-- boundaries for future numeric scoring calibration;
-- regression handling requirements;
-- a physical completion criterion.
+`docs/REAL_MACHINE_CALIBRATION.md` contains the representative known-good and known-fault machine categories, controlled capture procedure, storage/cross-category observations, calibration worksheet, pass/fail rules, numeric-scoring boundaries and regression handling.
 
-This is an executable calibration protocol, but it is not evidence that real machines have already been tested. Actual hardware access and captured reports are still required.
+Physical testing is now underway, but the system is **not yet calibrated**. The first run exposed an acquisition packaging gap that must be verified fixed on the same machine before that case can be considered a successful calibration result.
 
 ## Graph policy
 
@@ -63,8 +67,8 @@ The application must only graph real captured timestamped samples. The current s
 - Storage link-speed capability inference remains deliberately conservative.
 - No storage history is fabricated from a current reading.
 - Individual inspection currently reuses evidence from the completed full-system acquisition; it is not a separate live re-acquisition path.
-- Physical real-machine calibration is pending.
+- Physical calibration is active; no final calibration claim has been made.
 
 ## Next step
 
-Execute the Pass 10 protocol against representative physical systems. Preserve raw logs/JSON and independent ground truth, record discrepancies, add regression tests for reproducible issues, and only then consider closing calibration gaps or introducing any numeric scoring model.
+Build and run the corrected package on the same HP desktop. Confirm that smartmontools is actually present in the artifact and that the CrystalDiskInfo fallback can retrieve and safely match both physical drives. Preserve the raw logs/JSON, compare against independent CrystalDiskInfo evidence, and add regression fixtures for every reproducible discrepancy before declaring Pass 10 complete.
