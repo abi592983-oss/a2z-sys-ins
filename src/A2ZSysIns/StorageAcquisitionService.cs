@@ -250,7 +250,7 @@ namespace A2ZSysIns
                     RawString = (string)attr.SelectToken("raw.string"),
                     Source = "smartctl"
                 };
-                rec.SemanticsValidated = !string.IsNullOrWhiteSpace(rec.Name);
+                rec.SemanticsValidated = false;
                 d.SmartAttributes.Add(rec);
                 if (rec.Id.HasValue && rec.RawValue.HasValue) d.Attributes["ATA_" + rec.Id.Value] = rec.RawValue.Value;
                 if (rec.Id.HasValue && rec.RawValue.HasValue && rec.Id.Value == 194 && !d.TemperatureC.HasValue)
@@ -269,13 +269,13 @@ namespace A2ZSysIns
                     MediaErrors = (long?)nvme["media_errors"],
                     ErrorLogEntries = (long?)nvme["num_err_log_entries"],
                     TemperatureC = ReadDouble(nvme["temperature"]),
-                    ControllerTemperatureC = ReadDouble(nvme["controller_busy_time"]),
+                    ControllerTemperatureC = ReadDouble(nvme["controller_temperature"]),
                     DataUnitsRead = ReadDouble(nvme["data_units_read"]),
                     DataUnitsWritten = ReadDouble(nvme["data_units_written"]),
                     Interpretation = "Raw NVMe health/endurance evidence; interpretation deferred."
                 };
                 if (d.NvmeHealth.TemperatureC.HasValue) d.TemperatureC = d.NvmeHealth.TemperatureC;
-                d.ControllerTemperatureC = ReadDouble(json.SelectToken("nvme_smart_health_information_log.controller_temperature"));
+                d.ControllerTemperatureC = d.NvmeHealth.ControllerTemperatureC;
                 d.StorageEvidence.HasTemperature = d.TemperatureC.HasValue;
             }
 
