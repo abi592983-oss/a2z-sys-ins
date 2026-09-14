@@ -113,7 +113,7 @@ namespace A2ZSysIns
             {
                 EvidenceEngine.Log(_report, "PDF export failed", ex.ToString());
                 StatusText.Text = "PDF export failed";
-                MessageBox.Show(this, "The PDF could not be generated. The report data is still safe and the application will remain usable.\n\n" + ex.GetBaseException().Message, "A2Z System Inspector", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(this, "The PDF could not be generated. The report data is still safe and the application will remain usable.\n\n" + ex.GetBaseException().Message, "Inspection error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally { SavePdfButton.IsEnabled = true; }
         }
@@ -132,8 +132,8 @@ namespace A2ZSysIns
                 else EvidenceEngine.Log(_report, "CPU stress driver preparation", current.Detail);
                 var progress = new Progress<string>(text => { StatusText.Text = text; OverallText.Text = text; });
                 var result = await CpuStressTestService.RunAsync(_report, _stressCancellation.Token, progress);
-                Scoring.Calculate(_report);
                 StorageInterpretationService.Interpret(_report);
+                Scoring.Calculate(_report);
                 SmartInterpretation.NormalizeReport(_report);
                 AdvancedAssessment.Apply(_report);
                 SmartInterpretation.RefreshSummary(_report);
