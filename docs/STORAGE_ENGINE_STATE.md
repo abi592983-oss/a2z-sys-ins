@@ -39,10 +39,7 @@ The interpretation layer now:
 - Treats validated endurance/life as an endurance estimate, not an overall health percentage or failure probability.
 - Runs before the existing scoring pass so invalid raw ATA IDs do not reach the legacy storage failure rules.
 - Keeps the existing `SmartInterpretation` compatibility layer for now; full score-then-normalize removal remains a Pass 5 task.
-
-## Important semantic correction
-
-During Pass 3 review, the NVMe acquisition mapping was identified as assigning `controller_busy_time` to `NvmeHealthRecord.ControllerTemperatureC`. That field is not a temperature measurement. The intended temperature field is the NVMe controller-temperature value. This remains a code-review item to correct in the next focused acquisition cleanup unless fixed before that pass.
+- Corrects NVMe controller-temperature acquisition so `controller_temperature` is used instead of the unrelated `controller_busy_time` field.
 
 ## Existing limitations retained
 
@@ -58,8 +55,10 @@ During Pass 3 review, the NVMe acquisition mapping was identified as assigning `
 ## Files changed in Pass 3
 
 - `src/A2ZSysIns/StorageInterpretationService.cs` — new interpretation layer.
-- `src/A2ZSysIns/MainWindow.xaml.cs` — storage interpretation now runs before scoring in the full inspection and after CPU stress data is collected.
+- `src/A2ZSysIns/StorageAcquisitionService.cs` — corrected NVMe controller-temperature mapping and made raw ATA attributes initially unvalidated.
+- `src/A2ZSysIns/MainWindow.xaml.cs` — storage interpretation now runs before scoring in the full inspection and after CPU stress data is collected; unrelated PDF error-dialog title preserved.
 - `docs/STORAGE_ENGINE_STATE.md` — updated phase/state.
+- `docs/THE_PROBLEMS_WE_FOUND_IN_DEVELOPMENT.md` — recorded and closed the NVMe semantic mapping problem.
 
 ## Next pass
 
