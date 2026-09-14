@@ -49,7 +49,8 @@ namespace A2ZSysIns
         [DataMember] public List<string> Limitations = new List<string>();
     }
 
-    [DataContract] public sealed class DriveInfoRecord
+    [DataContract]
+    public sealed class DriveInfoRecord
     {
         [DataMember] public string Model;
         [DataMember] public string Serial;
@@ -66,7 +67,72 @@ namespace A2ZSysIns
         [DataMember] public string LinkCurrent;
         [DataMember] public string LinkMaximum;
         [DataMember] public Dictionary<string, long> Attributes = new Dictionary<string, long>();
+
+        // Pass 1 evidence model: preserve semantics instead of reducing SMART to ID -> raw value.
+        [DataMember] public List<SmartAttributeRecord> SmartAttributes = new List<SmartAttributeRecord>();
+        [DataMember] public NvmeHealthRecord NvmeHealth;
+        [DataMember] public StorageEvidenceInfo StorageEvidence = new StorageEvidenceInfo();
+        [DataMember] public double? TemperatureC;
+        [DataMember] public double? ControllerTemperatureC;
+        [DataMember] public double? EnduranceUsedPercent;
+        [DataMember] public string EnduranceMeaning = "Not measured";
+        [DataMember] public string SmartDataSource = "Not measured";
+        [DataMember] public string SmartDeviceType;
+        [DataMember] public string Transport;
+        [DataMember] public string Firmware;
+        [DataMember] public string Vendor;
+        [DataMember] public string Product;
     }
+
+    [DataContract]
+    public sealed class SmartAttributeRecord
+    {
+        [DataMember] public int? Id;
+        [DataMember] public string Name;
+        [DataMember] public long? RawValue;
+        [DataMember] public long? NormalizedValue;
+        [DataMember] public long? WorstValue;
+        [DataMember] public long? Threshold;
+        [DataMember] public string RawString;
+        [DataMember] public string Interpretation;
+        [DataMember] public string Source = "smartctl";
+        [DataMember] public bool SemanticsValidated;
+    }
+
+    [DataContract]
+    public sealed class NvmeHealthRecord
+    {
+        [DataMember] public long? CriticalWarning;
+        [DataMember] public long? AvailableSparePercent;
+        [DataMember] public long? AvailableSpareThresholdPercent;
+        [DataMember] public double? PercentageUsed;
+        [DataMember] public long? MediaErrors;
+        [DataMember] public long? ErrorLogEntries;
+        [DataMember] public double? TemperatureC;
+        [DataMember] public double? ControllerTemperatureC;
+        [DataMember] public double? DataUnitsRead;
+        [DataMember] public double? DataUnitsWritten;
+        [DataMember] public string Interpretation = "Not measured";
+    }
+
+    [DataContract]
+    public sealed class StorageEvidenceInfo
+    {
+        [DataMember] public string Availability = "Not measured";
+        [DataMember] public string Quality = "Unknown";
+        [DataMember] public string Source = "Not measured";
+        [DataMember] public string DeviceType = "Unknown";
+        [DataMember] public string Transport = "Unknown";
+        [DataMember] public string FailureReason;
+        [DataMember] public bool SerialValidated;
+        [DataMember] public bool HasAtaSmart;
+        [DataMember] public bool HasNvmeHealth;
+        [DataMember] public bool HasScsiHealth;
+        [DataMember] public bool HasTemperature;
+        [DataMember] public bool HasEndurance;
+        [DataMember] public List<string> UnavailableFields = new List<string>();
+    }
+
     [DataContract] public sealed class SensorRecord
     {
         [DataMember] public string Hardware;
