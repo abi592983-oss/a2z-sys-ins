@@ -12,39 +12,77 @@ namespace A2ZSysIns
 {
     public static class CpuStressTestService
     {
-        private const double MaximumSafeTemperatureC = 90.0;
-        private const double MaximumPreflightTemperatureC = 80.0;
+        private const int SampleIntervalMilliseconds = 200;
+        private const int PreflightSamples = 6;
+        private const double MaximumPreflightTemperatureC = CpuStressSafetyMonitor.PreflightTemperatureC;
 
         public static async Task<CpuStressResult> RunAsync(InspectionReport report, CancellationToken cancellation, IProgress<string> progress)
         {
-            var result = new CpuStressResult { StartedAt = DateTime.Now, LogicalWorkers = Environment.ProcessorCount,
-                PlannedDurationSeconds = 60, Status = "Starting" };
+            var result = new CpuStressResult
+            {
+                StartedAt = DateTime.Now,
+                LogicalWorkers = Environment.ProcessorCount,
+                PlannedDurationSeconds = 60,
+                Status = "Starting"
+            };
             report.CpuStressTest = result;
             EvidenceEngine.Log(report, "CPU stress test requested", "60-second staged test; workers=" + result.LogicalWorkers +
-                "; preflight limit=" + MaximumPreflightTemperatureC + " C; abort limit=" + MaximumSafeTemperatureC + " C");
+                "; safety sample interval=" + SampleIntervalMilliseconds + " ms; hard temperature limit=" + CpuStressSafetyMonitor.HardTemperatureC + " C");
 
             var timer = Stopwatch.StartNew();
             try
             {
                 using (var sensors = new CpuSensorSession())
                 {
-                    progress.Report("CPU stress preflight: checking temperature sensor...");
-                    var baselineMetrics = sensors.Read();
-                    var baseline = baselineMetrics.MaximumTemperatureC;
-                    if (!baseline.HasValue)
+                    progress.Report("CPU stress preflight: establishing a high-frequency sensor baseline...");
+                    var safety = new CpuStressSafetyMonitor();
+                    var baselineClocks = new List<double>();
+                    var baselineTemperatures = new List<double>();
+
+                    for (var i = 0; i < PreflightSamples; i++)
+                    {
+                        cancellation.ThrowIfCancellationRequested();
+                        var metrics = sensors.Read();
+                        var decision = safety.Evaluate(metrics, false);
+                        if (decision.Abort)
+                        {
+                            result.Status = "Refused";
+                            result.StopReason = decision.Reason;
+                            return Finish(report, result, timer);
+                        }
+                        if (!metrics.AverageCoreClockMHz.HasValue || !metrics.CpuLoadPercent.HasValue)
+                        {
+                            result.Status = "Refused";
+                            result.StopReason = "Cannot safely run: CPU clock and CPU load telemetry must both be available before applying stress.";
+                            return Finish(report, result, timer);
+                        }
+                        baselineClocks.Add(metrics.AverageCoreClockMHz.Value);
+                        baselineTemperatures.Add(metrics.TemperatureC.Value);
+                        await Task.Delay(SampleIntervalMilliseconds, cancellation);
+                    }
+
+                    var baselineClock = Median(baselineClocks);
+                    var baselineTemperature = Median(baselineTemperatures);
+                    var clockRangeRatio = (baselineClocks.Max() - baselineClocks.Min()) / Math.Max(1.0, baselineClock);
+                    if (clockRangeRatio > 0.50)
                     {
                         result.Status = "Refused";
-                        result.StopReason = "Cannot safely run: an actual CPU package/core temperature sensor is unavailable.";
+                        result.StopReason = "Cannot safely run: CPU clock telemetry was unstable during preflight (range=" + (clockRangeRatio * 100).ToString("0") + "%).";
                         return Finish(report, result, timer);
                     }
-                    result.BaselineTemperatureC = baseline;
-                    result.MaximumTemperatureC = baseline;
-                    if (baseline.Value >= MaximumPreflightTemperatureC)
+                    if (baselineTemperature >= MaximumPreflightTemperatureC)
                     {
                         result.Status = "Refused";
-                        result.StopReason = "Cannot safely run: preflight CPU temperature is " + baseline.Value.ToString("0.0") + " C.";
+                        result.StopReason = "Cannot safely run: preflight CPU temperature is " + baselineTemperature.ToString("0.0") + " °C.";
                         return Finish(report, result, timer);
                     }
+
+                    safety.SetBaseline(baselineClock);
+                    result.BaselineClockMHz = baselineClock;
+                    result.BaselineTemperatureC = baselineTemperature;
+                    result.MaximumTemperatureC = baselineTemperature;
+                    result.MinimumObservedClockMHz = baselineClock;
+                    result.MaximumObservedClockMHz = baselineClock;
 
                     var stages = new[] { Tuple.Create(40, 15), Tuple.Create(70, 15), Tuple.Create(100, 30) };
                     foreach (var stage in stages)
@@ -54,29 +92,48 @@ namespace A2ZSysIns
                             var workers = StartWorkers(stage.Item1, stageCancel.Token, result);
                             try
                             {
-                                for (var second = 0; second < stage.Item2; second++)
+                                var nextUiUpdate = 0L;
+                                while (timer.Elapsed.TotalSeconds < stages.Take(Array.IndexOf(stages, stage) + 1).Sum(x => x.Item2))
                                 {
                                     cancellation.ThrowIfCancellationRequested();
-                                    await Task.Delay(1000, cancellation);
+                                    await Task.Delay(SampleIntervalMilliseconds, cancellation);
                                     var metrics = sensors.Read();
-                                    if (!metrics.MaximumTemperatureC.HasValue) throw new InvalidOperationException("CPU temperature monitoring was lost; load stopped.");
-                                    var temperature = metrics.MaximumTemperatureC.Value;
-                                    result.MaximumTemperatureC = Math.Max(result.MaximumTemperatureC ?? temperature, temperature);
-                                    var sample = new CpuStressSample {
-                                        ElapsedSeconds = (int)timer.Elapsed.TotalSeconds,
+                                    var decision = safety.Evaluate(metrics, true);
+                                    if (decision.Abort)
+                                        throw new SafetyAbortException(decision.Reason);
+
+                                    var now = DateTime.Now;
+                                    var elapsedMs = (int)Math.Min(int.MaxValue, timer.ElapsedMilliseconds);
+                                    var sample = new CpuStressSample
+                                    {
+                                        ElapsedSeconds = elapsedMs / 1000,
+                                        ElapsedMilliseconds = elapsedMs,
+                                        CapturedAt = now,
                                         TargetLoadPercent = stage.Item1,
-                                        TemperatureC = temperature,
+                                        TemperatureC = metrics.TemperatureC.Value,
                                         ObservedCpuLoadPercent = metrics.CpuLoadPercent,
                                         AverageCoreClockMHz = metrics.AverageCoreClockMHz,
                                         MaximumCoreClockMHz = metrics.MaximumCoreClockMHz,
-                                        FanRpm = metrics.FanRpm
+                                        FanRpm = metrics.FanRpm,
+                                        SafetySampleValid = decision.SampleValid,
+                                        SafetyAssessment = decision.Assessment
                                     };
                                     result.Samples.Add(sample);
+                                    result.MaximumTemperatureC = Math.Max(result.MaximumTemperatureC ?? sample.TemperatureC, sample.TemperatureC);
+                                    if (sample.AverageCoreClockMHz.HasValue)
+                                    {
+                                        result.MinimumObservedClockMHz = Math.Min(result.MinimumObservedClockMHz ?? sample.AverageCoreClockMHz.Value, sample.AverageCoreClockMHz.Value);
+                                        result.MaximumObservedClockMHz = Math.Max(result.MaximumObservedClockMHz ?? sample.AverageCoreClockMHz.Value, sample.AverageCoreClockMHz.Value);
+                                    }
                                     EvidenceEngine.Log(report, "CPU stress sample", JsonConvert.SerializeObject(sample));
-                                    var clock = metrics.AverageCoreClockMHz.HasValue ? " • " + metrics.AverageCoreClockMHz.Value.ToString("0") + " MHz avg" : " • clock N/A";
-                                    progress.Report("CPU stress: " + stage.Item1 + "% target • " + temperature.ToString("0.0") + " °C" + clock + " • " + Math.Min(60, (int)timer.Elapsed.TotalSeconds) + "/60 s");
-                                    if (temperature >= MaximumSafeTemperatureC)
-                                        throw new ThermalAbortException("CPU reached the " + MaximumSafeTemperatureC.ToString("0") + " C safety limit.");
+
+                                    if (elapsedMs >= nextUiUpdate)
+                                    {
+                                        nextUiUpdate = elapsedMs + 500;
+                                        var clock = sample.AverageCoreClockMHz.HasValue ? " • " + sample.AverageCoreClockMHz.Value.ToString("0") + " MHz avg" : " • clock N/A";
+                                        progress.Report("CPU stress: " + stage.Item1 + "% target • " + sample.TemperatureC.ToString("0.0") + " °C" + clock +
+                                            " • " + sample.ObservedCpuLoadPercent.GetValueOrDefault().ToString("0") + "% load • " + Math.Min(60, elapsedMs / 1000) + "/60 s");
+                                    }
                                 }
                             }
                             finally
@@ -88,16 +145,16 @@ namespace A2ZSysIns
                     }
                 }
                 result.Status = "Completed";
-                result.StopReason = "Completed without reaching the thermal safety limit. This short test does not prove long-term stability.";
+                result.StopReason = "Completed without reaching a safety abort condition. This short test does not prove long-term stability.";
             }
             catch (OperationCanceledException)
             {
                 result.Status = "Cancelled";
                 result.StopReason = "Cancelled by the technician.";
             }
-            catch (ThermalAbortException ex)
+            catch (SafetyAbortException ex)
             {
-                result.Status = "Thermal abort";
+                result.Status = "Safety abort";
                 result.StopReason = ex.Message;
             }
             catch (Exception ex)
@@ -110,8 +167,10 @@ namespace A2ZSysIns
 
         private static CpuStressResult Finish(InspectionReport report, CpuStressResult result, Stopwatch timer)
         {
-            timer.Stop(); result.CompletedAt = DateTime.Now; result.ActualDurationSeconds = (int)Math.Ceiling(timer.Elapsed.TotalSeconds);
-            EvidenceEngine.Record(report, "CPU staged stress test", "Integrated CPU load + LibreHardwareMonitor",
+            timer.Stop();
+            result.CompletedAt = DateTime.Now;
+            result.ActualDurationSeconds = (int)Math.Ceiling(timer.Elapsed.TotalSeconds);
+            EvidenceEngine.Record(report, "CPU staged stress test", "Integrated CPU load + LibreHardwareMonitor + high-frequency safety supervisor",
                 result.Status == "Completed" ? "Measured" : result.Status == "Refused" ? "Unavailable" : "Partial",
                 result.Status + ": " + result.StopReason, JsonConvert.SerializeObject(result));
             EvidenceEngine.Log(report, "CPU stress test finished", JsonConvert.SerializeObject(result));
@@ -169,7 +228,8 @@ namespace A2ZSysIns
             {
                 var temps = new List<double>(); var loads = new List<double>(); var clocks = new List<double>(); var fans = new List<double>();
                 foreach (var hardware in (IEnumerable)_type.GetProperty("Hardware").GetValue(_computer, null)) ReadHardware(hardware, temps, loads, clocks, fans);
-                return new CpuMetrics {
+                return new CpuMetrics
+                {
                     MaximumTemperatureC = temps.Count == 0 ? (double?)null : temps.Max(),
                     CpuLoadPercent = loads.Count == 0 ? (double?)null : loads.Max(),
                     AverageCoreClockMHz = clocks.Count == 0 ? (double?)null : clocks.Average(),
@@ -201,6 +261,17 @@ namespace A2ZSysIns
             public void Dispose() { try { _type.GetMethod("Close").Invoke(_computer, null); } catch { } }
         }
 
-        private sealed class ThermalAbortException : Exception { public ThermalAbortException(string message) : base(message) { } }
+        private static double Median(IEnumerable<double> values)
+        {
+            var sorted = values.OrderBy(x => x).ToArray();
+            if (sorted.Length == 0) return 0;
+            var middle = sorted.Length / 2;
+            return sorted.Length % 2 == 0 ? (sorted[middle - 1] + sorted[middle]) / 2.0 : sorted[middle];
+        }
+
+        private sealed class SafetyAbortException : Exception
+        {
+            public SafetyAbortException(string message) : base(message) { }
+        }
     }
 }
