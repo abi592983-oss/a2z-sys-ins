@@ -25,7 +25,7 @@ namespace A2ZSysIns.Tests
             var sampler = new AdaptiveTelemetrySampler();
             var metrics = new CpuSafetyMetrics { TemperatureC = 50, CpuLoadPercent = 80, AverageCoreClockMHz = 2500 };
             var now = DateTime.UtcNow;
-            for (var i = 0; i < 20; i++) sampler.Observe(metrics, now.AddMilliseconds(i * 50));
+            for (var i = 0; i < 20; i++) sampler.Observe(metrics, now.AddMilliseconds(i * 50), true);
             Assert.AreEqual(50, sampler.RecommendedPollMilliseconds(true));
             Assert.IsTrue(AdaptiveTelemetrySampler.SafetyPollMilliseconds <= 50);
         }
