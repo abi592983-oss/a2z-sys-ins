@@ -62,7 +62,10 @@ namespace A2ZSysIns
             if (metrics.CpuLoadPercent.HasValue && (metrics.CpuLoadPercent.Value < 0 || metrics.CpuLoadPercent.Value > 100)) return AbortNow("CPU load telemetry became physically implausible.");
             if (metrics.TemperatureC.Value >= EarlyTemperatureC) return AbortNow("CPU temperature reached the 87 °C early-abort threshold.");
 
-            // RAM/GPU are optional report channels. They are never allowed to make a valid CPU safety stream fail closed.
+            // Normal idle/boost frequency movement is expected. A large preflight range is
+            // not evidence of bad telemetry, so preflight never rejects a usable clock
+            // merely because it moved from a low idle state to a high boost state.
+            // Clock-collapse/surge protection is evaluated only after real load is applied.
             if (metrics.AverageCoreClockMHz.HasValue)
             {
                 Add(_clocks, metrics.AverageCoreClockMHz.Value);
