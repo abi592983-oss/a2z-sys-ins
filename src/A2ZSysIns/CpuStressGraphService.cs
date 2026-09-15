@@ -49,6 +49,7 @@ namespace A2ZSysIns
             b.Margin = new Thickness(0, 2, 0, 8);
             root.Children.Add(a);
             root.Children.Add(b);
+            root.Children.Add(BuildCadenceSummary(report.CpuStressTest.Samples));
             return root;
         }
 
@@ -74,6 +75,35 @@ namespace A2ZSysIns
             return canvas;
         }
 
+        private static TextBlock BuildCadenceSummary(IList<CpuStressSample> samples)
+        {
+            var ordered = (samples ?? new List<CpuStressSample>()).OrderBy(s => s.CapturedAt).ToList();
+            var intervals = new List<double>();
+            for (var i = 1; i < ordered.Count; i++)
+            {
+                var interval = (ordered[i].CapturedAt - ordered[i - 1].CapturedAt).TotalMilliseconds;
+                if (interval >= 1 && interval <= 10000) intervals.Add(interval);
+            }
+
+            var median = intervals.Count == 0 ? (double?)null : Median(intervals);
+            var first = ordered.Count == 0 ? (DateTime?)null : ordered[0].CapturedAt;
+            var last = ordered.Count == 0 ? (DateTime?)null : ordered[ordered.Count - 1].CapturedAt;
+            var spanSeconds = first.HasValue && last.HasValue ? Math.Max(0, (last.Value - first.Value).TotalSeconds) : 0;
+            var pollValues = ordered.Where(s => s.TelemetryPollIntervalMilliseconds > 0)
+                .Select(s => s.TelemetryPollIntervalMilliseconds).Distinct().OrderBy(x => x).ToArray();
+            var pollText = pollValues.Length == 0 ? "not recorded" : string.Join(", ", pollValues.Select(x => x + " ms"));
+            var captureText = median.HasValue ? median.Value.ToString("0") + " ms median" : "not available";
+
+            return new TextBlock
+            {
+                Text = "Actual captured span: " + spanSeconds.ToString("0.0") + " s  •  actual capture interval: " + captureText + "  •  telemetry polling target: " + pollText + "  •  plotted points: " + ordered.Count,
+                Foreground = Brushes.Gray,
+                FontSize = 10,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(2, 0, 2, 6)
+            };
+        }
+
         private static Canvas CreateCanvas(double width, double height)
         {
             return new Canvas { Width = width, Height = height, Background = Brushes.Black, ClipToBounds = true };
@@ -86,7 +116,7 @@ namespace A2ZSysIns
             canvas.Children.Clear();
             var width = Math.Max(320, double.IsNaN(canvas.ActualWidth) || canvas.ActualWidth <= 0 ? canvas.Width : canvas.ActualWidth);
             var height = Math.Max(140, canvas.Height);
-            var left = 48.0; var right = 10.0; var top = 22.0; var bottom = 24.0;
+            var left = 48.0; var right = 10.0; var top = 22.0; var bottom = 30.0;
             var plotW = Math.Max(1, width - left - right); var plotH = Math.Max(1, height - top - bottom);
             canvas.Children.Add(new Rectangle { Width = width, Height = height, Fill = Brushes.Black });
             var titleText = new TextBlock { Text = title, Foreground = Brushes.LightGray, FontWeight = FontWeights.SemiBold, FontSize = 12 };
@@ -98,17 +128,35 @@ namespace A2ZSysIns
                 var label = new TextBlock { Text = (max - (max - min) * i / 4.0).ToString("0"), Foreground = Brushes.Gray, FontSize = 9 };
                 Canvas.SetLeft(label, 4); Canvas.SetTop(label, y - 7); canvas.Children.Add(label);
             }
+            AddTimeAxis(canvas, samples, left, top + plotH, plotW);
             AddSeries(canvas, samples, a, min, max, left, top, plotW, plotH, Brushes.LimeGreen, aLabel, true);
             if (b != null) AddSeries(canvas, samples, b, min, max, left, top, plotW, plotH, Brushes.DeepSkyBlue, bLabel, false);
             if (c != null) AddSeries(canvas, samples, c, min, max, left, top, plotW, plotH, Brushes.Orange, cLabel, false);
             AddLegend(canvas, left + plotW - 210, top + 4, aLabel, bLabel, cLabel);
         }
 
+        private static void AddTimeAxis(Canvas canvas, IList<CpuStressSample> samples, double left, double bottomY, double plotW)
+        {
+            if (samples == null || samples.Count == 0) return;
+            var first = samples[0].CapturedAt;
+            var last = samples[samples.Count - 1].CapturedAt;
+            var span = Math.Max(0.001, (last - first).TotalSeconds);
+            for (var i = 0; i <= 4; i++)
+            {
+                var seconds = span * i / 4.0;
+                var x = left + plotW * i / 4.0;
+                var tick = new Line { X1 = x, X2 = x, Y1 = bottomY, Y2 = bottomY + 3, Stroke = Brushes.Gray, StrokeThickness = 1 };
+                canvas.Children.Add(tick);
+                var label = new TextBlock { Text = seconds.ToString("0.0") + "s", Foreground = Brushes.Gray, FontSize = 9 };
+                Canvas.SetLeft(label, x - 12); Canvas.SetTop(label, bottomY + 4); canvas.Children.Add(label);
+            }
+        }
+
         private static void DrawSecondary(Canvas canvas, IList<CpuStressSample> samples, double max, Func<CpuStressSample, double?> value, string label)
         {
             var width = Math.Max(320, double.IsNaN(canvas.ActualWidth) || canvas.ActualWidth <= 0 ? canvas.Width : canvas.ActualWidth);
             var height = Math.Max(140, canvas.Height);
-            var left = 48.0; var right = 10.0; var top = 22.0; var bottom = 24.0;
+            var left = 48.0; var right = 10.0; var top = 22.0; var bottom = 30.0;
             var plotW = Math.Max(1, width - left - right); var plotH = Math.Max(1, height - top - bottom);
             AddSeries(canvas, samples, value, 0, max, left, top, plotW, plotH, Brushes.Cyan, label, false);
         }
@@ -117,13 +165,16 @@ namespace A2ZSysIns
             double min, double max, double left, double top, double plotW, double plotH, Brush stroke, string label, bool first)
         {
             if (samples == null) return;
-            var valid = samples.Select((s, i) => new { Index = i, Value = selector(s) }).Where(x => x.Value.HasValue).ToList();
+            var valid = samples.Select((s, i) => new { Index = i, Sample = s, Value = selector(s) }).Where(x => x.Value.HasValue).ToList();
             if (valid.Count == 0) return;
-            var total = Math.Max(1, samples.Count - 1);
+            var firstCaptured = samples[0].CapturedAt;
+            var lastCaptured = samples[samples.Count - 1].CapturedAt;
+            var totalSeconds = Math.Max(0.001, (lastCaptured - firstCaptured).TotalSeconds);
             var points = new PointCollection();
             foreach (var item in valid)
             {
-                var x = left + plotW * item.Index / total;
+                var elapsedSeconds = Math.Max(0, (item.Sample.CapturedAt - firstCaptured).TotalSeconds);
+                var x = left + plotW * elapsedSeconds / totalSeconds;
                 var ratio = (item.Value.Value - min) / Math.Max(0.0001, max - min);
                 ratio = Math.Max(0, Math.Min(1, ratio));
                 var y = top + plotH * (1 - ratio);
@@ -147,6 +198,14 @@ namespace A2ZSysIns
                 canvas.Children.Add(t);
                 offset += 55;
             }
+        }
+
+        private static double Median(IList<double> values)
+        {
+            var sorted = values.OrderBy(x => x).ToArray();
+            if (sorted.Length == 0) return 0;
+            var middle = sorted.Length / 2;
+            return sorted.Length % 2 == 0 ? (sorted[middle - 1] + sorted[middle]) / 2.0 : sorted[middle];
         }
     }
 }
