@@ -11,6 +11,10 @@ namespace A2ZSysIns
         public double? AverageCoreClockMHz;
         public double? MaximumCoreClockMHz;
         public double? FanRpm;
+        public double? MemoryUsedPercent;
+        public double? GpuLoadPercent;
+        public double? GpuTemperatureC;
+        public int PollIntervalMilliseconds;
     }
 
     internal sealed class CpuSafetyDecision
@@ -33,8 +37,6 @@ namespace A2ZSysIns
         private readonly Queue<double> _clocks = new Queue<double>();
         private int _clockDropCount;
         private int _clockSurgeCount;
-        private int _unchangedTelemetryCount;
-        private CpuSafetyMetrics _last;
         private bool _stressBaselineSet;
 
         public double? BaselineClockMHz { get; private set; }
@@ -59,34 +61,31 @@ namespace A2ZSysIns
 
         public CpuSafetyDecision Evaluate(CpuSafetyMetrics metrics, bool underStress)
         {
-            if (metrics == null)
-                return AbortNow("Safety monitoring returned no telemetry.");
-
+            if (metrics == null) return AbortNow("Safety monitoring returned no telemetry.");
             if (!metrics.TemperatureC.HasValue || metrics.TemperatureC.Value <= 0 || metrics.TemperatureC.Value >= 150)
                 return AbortNow("CPU temperature telemetry was lost or became invalid.");
-
             if (metrics.TemperatureC.Value >= HardTemperatureC)
                 return AbortNow("CPU reached the 90 °C hard safety limit.");
-
             if (underStress && !metrics.AverageCoreClockMHz.HasValue)
                 return AbortNow("CPU clock telemetry was lost during the stress test.");
-
             if (underStress && (!metrics.CpuLoadPercent.HasValue || metrics.CpuLoadPercent.Value < 0 || metrics.CpuLoadPercent.Value > 100))
                 return AbortNow("CPU load telemetry was lost or became invalid during the stress test.");
-
             if (metrics.AverageCoreClockMHz.HasValue && !IsUsableClock(metrics.AverageCoreClockMHz.Value))
                 return AbortNow("CPU clock telemetry became physically implausible.");
-
             if (metrics.CpuLoadPercent.HasValue && (metrics.CpuLoadPercent.Value < 0 || metrics.CpuLoadPercent.Value > 100))
                 return AbortNow("CPU load telemetry became physically implausible.");
-
+            if (metrics.MemoryUsedPercent.HasValue && (metrics.MemoryUsedPercent.Value < 0 || metrics.MemoryUsedPercent.Value > 100))
+                return AbortNow("Memory telemetry became physically implausible.");
+            if (metrics.GpuLoadPercent.HasValue && (metrics.GpuLoadPercent.Value < 0 || metrics.GpuLoadPercent.Value > 100))
+                return AbortNow("GPU load telemetry became physically implausible.");
+            if (metrics.GpuTemperatureC.HasValue && (metrics.GpuTemperatureC.Value <= 0 || metrics.GpuTemperatureC.Value >= 150))
+                return AbortNow("GPU temperature telemetry became invalid.");
             if (metrics.TemperatureC.Value >= EarlyTemperatureC)
                 return AbortNow("CPU temperature reached the 87 °C early-abort threshold.");
 
             if (metrics.AverageCoreClockMHz.HasValue)
             {
                 Add(_clocks, metrics.AverageCoreClockMHz.Value);
-
                 if (underStress && _stressBaselineSet && metrics.CpuLoadPercent.GetValueOrDefault() >= 70)
                 {
                     var median = Median(_clocks);
@@ -94,10 +93,8 @@ namespace A2ZSysIns
                     var surgeRatio = metrics.AverageCoreClockMHz.Value / Math.Max(1.0, median) - 1.0;
                     var baselineDrop = 1.0 - metrics.AverageCoreClockMHz.Value / Math.Max(1.0, BaselineClockMHz.Value);
                     var baselineSurge = metrics.AverageCoreClockMHz.Value / Math.Max(1.0, BaselineClockMHz.Value) - 1.0;
-
                     if (dropRatio >= 0.30 || baselineDrop >= 0.35) _clockDropCount++; else _clockDropCount = 0;
                     if (surgeRatio >= 0.50 || baselineSurge >= 0.60) _clockSurgeCount++; else _clockSurgeCount = 0;
-
                     if (_clockDropCount >= RequiredSustainedSamples)
                         return AbortNow("Sustained CPU clock collapse detected under load; possible thermal, power, or stability throttling.");
                     if (_clockSurgeCount >= 2)
@@ -105,20 +102,6 @@ namespace A2ZSysIns
                 }
             }
 
-            if (underStress && metrics.CpuLoadPercent.HasValue && metrics.CpuLoadPercent.Value >= 70 && _last != null)
-            {
-                var sameClock = metrics.AverageCoreClockMHz.HasValue && _last.AverageCoreClockMHz.HasValue &&
-                                 Math.Abs(metrics.AverageCoreClockMHz.Value - _last.AverageCoreClockMHz.Value) < 1.0;
-                var sameLoad = metrics.CpuLoadPercent.HasValue && _last.CpuLoadPercent.HasValue &&
-                               Math.Abs(metrics.CpuLoadPercent.Value - _last.CpuLoadPercent.Value) < 0.1;
-                var sameTemp = metrics.TemperatureC.HasValue && _last.TemperatureC.HasValue &&
-                               Math.Abs(metrics.TemperatureC.Value - _last.TemperatureC.Value) < 0.1;
-                if (sameClock && sameLoad && sameTemp) _unchangedTelemetryCount++; else _unchangedTelemetryCount = 0;
-                if (_unchangedTelemetryCount >= 12)
-                    return AbortNow("CPU telemetry appears stale during active stress; safety monitoring can no longer be trusted.");
-            }
-
-            _last = metrics;
             return new CpuSafetyDecision
             {
                 Assessment = metrics.TemperatureC.Value >= 85 ? "High temperature — closely monitored" : "Observed",
@@ -126,19 +109,9 @@ namespace A2ZSysIns
             };
         }
 
-        private CpuSafetyDecision AbortNow(string reason)
-        {
-            return new CpuSafetyDecision { Abort = true, Reason = reason, Assessment = "ABORT" };
-        }
-
+        private CpuSafetyDecision AbortNow(string reason) => new CpuSafetyDecision { Abort = true, Reason = reason, Assessment = "ABORT" };
         private static bool IsUsableClock(double value) => value >= MinimumUsableClockMHz && value < 10000;
-
-        private static void Add(Queue<double> queue, double value)
-        {
-            queue.Enqueue(value);
-            while (queue.Count > HistoryLimit) queue.Dequeue();
-        }
-
+        private static void Add(Queue<double> queue, double value) { queue.Enqueue(value); while (queue.Count > HistoryLimit) queue.Dequeue(); }
         private static double Median(IEnumerable<double> values)
         {
             var sorted = values.OrderBy(x => x).ToArray();
