@@ -9,7 +9,6 @@ namespace A2ZSysIns
         private readonly Queue<double> _intervals = new Queue<double>();
         private double? _lastValue;
         private DateTime? _lastChangedAt;
-
         public double? EstimatedUpdateMilliseconds { get; private set; }
         public DateTime? LastChangedAt { get { return _lastChangedAt; } }
 
@@ -29,18 +28,15 @@ namespace A2ZSysIns
                         EstimatedUpdateMilliseconds = Median(_intervals);
                     }
                 }
-                _lastChangedAt = capturedAt;
-                _lastValue = value.Value;
+                _lastChangedAt = capturedAt; _lastValue = value.Value;
             }
             return changed;
         }
 
         private static double Median(IEnumerable<double> values)
         {
-            var sorted = values.OrderBy(x => x).ToArray();
-            if (sorted.Length == 0) return 0;
-            var m = sorted.Length / 2;
-            return sorted.Length % 2 == 0 ? (sorted[m - 1] + sorted[m]) / 2.0 : sorted[m];
+            var sorted = values.OrderBy(x => x).ToArray(); if (sorted.Length == 0) return 0;
+            var m = sorted.Length / 2; return sorted.Length % 2 == 0 ? (sorted[m - 1] + sorted[m]) / 2.0 : sorted[m];
         }
     }
 
@@ -49,7 +45,6 @@ namespace A2ZSysIns
         internal const int SafetyPollMilliseconds = 50;
         internal const int MinimumPollMilliseconds = 25;
         internal const int MaximumPollMilliseconds = 1000;
-
         private readonly TelemetryCadenceTracker _cpuLoad = new TelemetryCadenceTracker();
         private readonly TelemetryCadenceTracker _cpuClock = new TelemetryCadenceTracker();
         private readonly TelemetryCadenceTracker _cpuTemperature = new TelemetryCadenceTracker();
@@ -57,7 +52,7 @@ namespace A2ZSysIns
         private readonly TelemetryCadenceTracker _gpuLoad = new TelemetryCadenceTracker();
         private readonly TelemetryCadenceTracker _gpuTemperature = new TelemetryCadenceTracker();
 
-        public int Observe(CpuSafetyMetrics metrics, DateTime capturedAt)
+        public int Observe(CpuSafetyMetrics metrics, DateTime capturedAt, bool underStress)
         {
             _cpuLoad.Observe(metrics == null ? (double?)null : metrics.CpuLoadPercent, capturedAt);
             _cpuClock.Observe(metrics == null ? (double?)null : metrics.AverageCoreClockMHz, capturedAt);
@@ -65,24 +60,16 @@ namespace A2ZSysIns
             _memory.Observe(metrics == null ? (double?)null : metrics.MemoryUsedPercent, capturedAt);
             _gpuLoad.Observe(metrics == null ? (double?)null : metrics.GpuLoadPercent, capturedAt);
             _gpuTemperature.Observe(metrics == null ? (double?)null : metrics.GpuTemperatureC, capturedAt);
-            return RecommendedPollMilliseconds(true);
+            return RecommendedPollMilliseconds(underStress);
         }
 
-        // Safety polling remains at 50 ms or faster. The adaptive part is per-sensor:
-        // a sensor that updates slowly is identified as such and is never mistaken for
-        // a stream of fresh changes merely because it was read repeatedly.
+        // During active stress, safety remains at 50 ms or faster. During preflight,
+        // the fastest observed sensor cadence determines the next polling interval.
         public int RecommendedPollMilliseconds(bool underStress)
         {
             if (underStress) return SafetyPollMilliseconds;
-            var estimates = new[]
-            {
-                _cpuLoad.EstimatedUpdateMilliseconds,
-                _cpuClock.EstimatedUpdateMilliseconds,
-                _cpuTemperature.EstimatedUpdateMilliseconds,
-                _memory.EstimatedUpdateMilliseconds,
-                _gpuLoad.EstimatedUpdateMilliseconds,
-                _gpuTemperature.EstimatedUpdateMilliseconds
-            }.Where(x => x.HasValue).Select(x => x.Value).ToArray();
+            var estimates = new[] { _cpuLoad.EstimatedUpdateMilliseconds, _cpuClock.EstimatedUpdateMilliseconds, _cpuTemperature.EstimatedUpdateMilliseconds, _memory.EstimatedUpdateMilliseconds, _gpuLoad.EstimatedUpdateMilliseconds, _gpuTemperature.EstimatedUpdateMilliseconds }
+                .Where(x => x.HasValue).Select(x => x.Value).ToArray();
             if (estimates.Length == 0) return SafetyPollMilliseconds;
             var fastest = estimates.Min();
             return (int)Math.Max(MinimumPollMilliseconds, Math.Min(MaximumPollMilliseconds, Math.Round(fastest / 2.0)));
@@ -90,16 +77,9 @@ namespace A2ZSysIns
 
         public string DescribeFreshness(CpuSafetyMetrics metrics)
         {
-            return "CPU load " + Describe(_cpuLoad) + "; clock " + Describe(_cpuClock) +
-                   "; CPU temp " + Describe(_cpuTemperature) + "; RAM " + Describe(_memory) +
-                   "; GPU load " + Describe(_gpuLoad) + "; GPU temp " + Describe(_gpuTemperature);
+            return "CPU load " + Describe(_cpuLoad) + "; clock " + Describe(_cpuClock) + "; CPU temp " + Describe(_cpuTemperature) + "; RAM " + Describe(_memory) + "; GPU load " + Describe(_gpuLoad) + "; GPU temp " + Describe(_gpuTemperature);
         }
 
-        private static string Describe(TelemetryCadenceTracker tracker)
-        {
-            return tracker.EstimatedUpdateMilliseconds.HasValue
-                ? "~" + tracker.EstimatedUpdateMilliseconds.Value.ToString("0") + " ms"
-                : "learning";
-        }
+        private static string Describe(TelemetryCadenceTracker tracker) => tracker.EstimatedUpdateMilliseconds.HasValue ? "~" + tracker.EstimatedUpdateMilliseconds.Value.ToString("0") + " ms" : "learning";
     }
 }
