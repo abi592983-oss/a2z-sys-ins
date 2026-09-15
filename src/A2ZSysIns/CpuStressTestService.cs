@@ -12,12 +12,17 @@ namespace A2ZSysIns
 {
     public static class CpuStressTestService
     {
-        private const int SampleIntervalMilliseconds = 200;
+        private const int SampleIntervalMilliseconds = AdaptiveTelemetrySampler.SafetyPollMilliseconds;
         private const int PreflightSamples = 6;
         private const int StressBaselineSamples = 5;
         private const double MaximumPreflightTemperatureC = CpuStressSafetyMonitor.PreflightTemperatureC;
 
-        public static async Task<CpuStressResult> RunAsync(InspectionReport report, CancellationToken cancellation, IProgress<string> progress)
+        public static Task<CpuStressResult> RunAsync(InspectionReport report, CancellationToken cancellation, IProgress<string> progress)
+        {
+            return RunAsync(report, cancellation, progress, null);
+        }
+
+        public static async Task<CpuStressResult> RunAsync(InspectionReport report, CancellationToken cancellation, IProgress<string> progress, IProgress<CpuStressSample> sampleProgress)
         {
             var result = new CpuStressResult
             {
@@ -28,15 +33,16 @@ namespace A2ZSysIns
             };
             report.CpuStressTest = result;
             EvidenceEngine.Log(report, "CPU stress test requested", "60-second staged test; workers=" + result.LogicalWorkers +
-                "; safety sample interval=" + SampleIntervalMilliseconds + " ms; hard temperature limit=" + CpuStressSafetyMonitor.HardTemperatureC + " C");
+                "; safety poll=" + SampleIntervalMilliseconds + " ms; per-sensor cadence learning enabled; hard temperature limit=" + CpuStressSafetyMonitor.HardTemperatureC + " C");
 
             var timer = Stopwatch.StartNew();
             try
             {
                 using (var sensors = new CpuSensorSession())
                 {
-                    progress.Report("CPU stress preflight: establishing a high-frequency sensor baseline...");
+                    progress.Report("CPU stress preflight: learning sensor update cadence...");
                     var safety = new CpuStressSafetyMonitor();
+                    var cadence = new AdaptiveTelemetrySampler();
                     var baselineClocks = new List<double>();
                     var baselineTemperatures = new List<double>();
 
@@ -44,6 +50,8 @@ namespace A2ZSysIns
                     {
                         cancellation.ThrowIfCancellationRequested();
                         var metrics = sensors.Read();
+                        var capturedAt = DateTime.Now;
+                        metrics.PollIntervalMilliseconds = cadence.Observe(metrics, capturedAt);
                         var decision = safety.Evaluate(metrics, false);
                         if (decision.Abort)
                         {
@@ -59,7 +67,7 @@ namespace A2ZSysIns
                         }
                         baselineClocks.Add(metrics.AverageCoreClockMHz.Value);
                         baselineTemperatures.Add(metrics.TemperatureC.Value);
-                        await Task.Delay(SampleIntervalMilliseconds, cancellation);
+                        await Task.Delay(metrics.PollIntervalMilliseconds, cancellation);
                     }
 
                     var baselineClock = Median(baselineClocks);
@@ -101,11 +109,11 @@ namespace A2ZSysIns
                                 while (stageTimer.ElapsedMilliseconds < stage.Item2 * 1000L)
                                 {
                                     cancellation.ThrowIfCancellationRequested();
-                                    await Task.Delay(SampleIntervalMilliseconds, cancellation);
                                     var metrics = sensors.Read();
+                                    var capturedAt = DateTime.Now;
+                                    metrics.PollIntervalMilliseconds = cadence.Observe(metrics, capturedAt);
                                     var decision = safety.Evaluate(metrics, true);
-                                    if (decision.Abort)
-                                        throw new SafetyAbortException(decision.Reason);
+                                    if (decision.Abort) throw new SafetyAbortException(decision.Reason);
 
                                     if (!stressBaselineEstablished && metrics.AverageCoreClockMHz.HasValue)
                                     {
@@ -119,19 +127,23 @@ namespace A2ZSysIns
                                         }
                                     }
 
-                                    var now = DateTime.Now;
                                     var elapsedMs = (int)Math.Min(int.MaxValue, stressTimer.ElapsedMilliseconds);
                                     var sample = new CpuStressSample
                                     {
                                         ElapsedSeconds = elapsedMs / 1000,
                                         ElapsedMilliseconds = elapsedMs,
-                                        CapturedAt = now,
+                                        CapturedAt = capturedAt,
                                         TargetLoadPercent = stage.Item1,
                                         TemperatureC = metrics.TemperatureC.Value,
                                         ObservedCpuLoadPercent = metrics.CpuLoadPercent,
                                         AverageCoreClockMHz = metrics.AverageCoreClockMHz,
                                         MaximumCoreClockMHz = metrics.MaximumCoreClockMHz,
                                         FanRpm = metrics.FanRpm,
+                                        MemoryUsedPercent = metrics.MemoryUsedPercent,
+                                        GpuLoadPercent = metrics.GpuLoadPercent,
+                                        GpuTemperatureC = metrics.GpuTemperatureC,
+                                        TelemetryFreshness = cadence.DescribeFreshness(metrics),
+                                        TelemetryPollIntervalMilliseconds = metrics.PollIntervalMilliseconds,
                                         SafetySampleValid = decision.SampleValid,
                                         SafetyAssessment = decision.Assessment
                                     };
@@ -142,15 +154,21 @@ namespace A2ZSysIns
                                         result.MinimumObservedClockMHz = Math.Min(result.MinimumObservedClockMHz ?? sample.AverageCoreClockMHz.Value, sample.AverageCoreClockMHz.Value);
                                         result.MaximumObservedClockMHz = Math.Max(result.MaximumObservedClockMHz ?? sample.AverageCoreClockMHz.Value, sample.AverageCoreClockMHz.Value);
                                     }
+                                    sampleProgress?.Report(sample);
                                     EvidenceEngine.Log(report, "CPU stress sample", JsonConvert.SerializeObject(sample));
 
                                     if (elapsedMs >= nextUiUpdate)
                                     {
                                         nextUiUpdate = elapsedMs + 500;
                                         var clock = sample.AverageCoreClockMHz.HasValue ? " • " + sample.AverageCoreClockMHz.Value.ToString("0") + " MHz avg" : " • clock N/A";
+                                        var gpu = sample.GpuLoadPercent.HasValue ? " • GPU " + sample.GpuLoadPercent.Value.ToString("0") + "%" : " • GPU N/A";
                                         progress.Report("CPU stress: " + stage.Item1 + "% target • " + sample.TemperatureC.ToString("0.0") + " °C" + clock +
-                                            " • " + sample.ObservedCpuLoadPercent.GetValueOrDefault().ToString("0") + "% load • " + Math.Min(60, elapsedMs / 1000) + "/60 s");
+                                            " • " + sample.ObservedCpuLoadPercent.GetValueOrDefault().ToString("0") + "% CPU • RAM " +
+                                            (sample.MemoryUsedPercent.HasValue ? sample.MemoryUsedPercent.Value.ToString("0") + "%" : "N/A") + gpu + " • " + Math.Min(60, elapsedMs / 1000) + "/60 s");
                                     }
+
+                                    var delay = Math.Max(AdaptiveTelemetrySampler.MinimumPollMilliseconds, Math.Min(SampleIntervalMilliseconds, metrics.PollIntervalMilliseconds));
+                                    await Task.Delay(delay, cancellation);
                                 }
                             }
                             finally
@@ -188,7 +206,7 @@ namespace A2ZSysIns
             timer.Stop();
             result.CompletedAt = DateTime.Now;
             result.ActualDurationSeconds = (int)Math.Ceiling(timer.Elapsed.TotalSeconds);
-            EvidenceEngine.Record(report, "CPU staged stress test", "Integrated CPU load + LibreHardwareMonitor + high-frequency safety supervisor",
+            EvidenceEngine.Record(report, "CPU staged stress test", "Integrated CPU load + LibreHardwareMonitor + adaptive high-frequency safety telemetry",
                 result.Status == "Completed" ? "Measured" : result.Status == "Refused" ? "Unavailable" : "Partial",
                 result.Status + ": " + result.StopReason, JsonConvert.SerializeObject(result));
             EvidenceEngine.Log(report, "CPU stress test finished", JsonConvert.SerializeObject(result));
@@ -218,9 +236,7 @@ namespace A2ZSysIns
             }, token)).ToArray();
         }
 
-        private sealed class CpuMetrics : CpuSafetyMetrics
-        {
-        }
+        private sealed class CpuMetrics : CpuSafetyMetrics { }
 
         private sealed class CpuSensorSession : IDisposable
         {
@@ -232,6 +248,8 @@ namespace A2ZSysIns
                 _type = asm.GetType("LibreHardwareMonitor.Hardware.Computer", true);
                 _computer = Activator.CreateInstance(_type);
                 _type.GetProperty("IsCpuEnabled").SetValue(_computer, true, null);
+                _type.GetProperty("IsMemoryEnabled")?.SetValue(_computer, true, null);
+                _type.GetProperty("IsGpuEnabled")?.SetValue(_computer, true, null);
                 _type.GetProperty("IsMotherboardEnabled")?.SetValue(_computer, true, null);
                 _type.GetProperty("IsControllerEnabled")?.SetValue(_computer, true, null);
                 _type.GetMethod("Open").Invoke(_computer, null);
@@ -240,22 +258,27 @@ namespace A2ZSysIns
             public CpuMetrics Read()
             {
                 var temps = new List<double>(); var loads = new List<double>(); var clocks = new List<double>(); var fans = new List<double>();
-                foreach (var hardware in (IEnumerable)_type.GetProperty("Hardware").GetValue(_computer, null)) ReadHardware(hardware, temps, loads, clocks, fans);
+                var memoryLoads = new List<double>(); var gpuLoads = new List<double>(); var gpuTemps = new List<double>();
+                foreach (var hardware in (IEnumerable)_type.GetProperty("Hardware").GetValue(_computer, null)) ReadHardware(hardware, temps, loads, clocks, fans, memoryLoads, gpuLoads, gpuTemps);
                 return new CpuMetrics
                 {
                     TemperatureC = temps.Count == 0 ? (double?)null : temps.Max(),
                     CpuLoadPercent = loads.Count == 0 ? (double?)null : loads.Max(),
                     AverageCoreClockMHz = clocks.Count == 0 ? (double?)null : clocks.Average(),
                     MaximumCoreClockMHz = clocks.Count == 0 ? (double?)null : clocks.Max(),
-                    FanRpm = fans.Count == 0 ? (double?)null : fans.Max()
+                    FanRpm = fans.Count == 0 ? (double?)null : fans.Max(),
+                    MemoryUsedPercent = memoryLoads.Count == 0 ? (double?)null : memoryLoads.Max(),
+                    GpuLoadPercent = gpuLoads.Count == 0 ? (double?)null : gpuLoads.Max(),
+                    GpuTemperatureC = gpuTemps.Count == 0 ? (double?)null : gpuTemps.Max()
                 };
             }
 
-            private static void ReadHardware(object hardware, List<double> temps, List<double> loads, List<double> clocks, List<double> fans)
+            private static void ReadHardware(object hardware, List<double> temps, List<double> loads, List<double> clocks, List<double> fans, List<double> memoryLoads, List<double> gpuLoads, List<double> gpuTemps)
             {
                 var type = hardware.GetType();
                 type.GetMethod("Update")?.Invoke(hardware, null);
                 var hardwareType = Convert.ToString(type.GetProperty("HardwareType")?.GetValue(hardware, null));
+                var isGpu = hardwareType != null && hardwareType.IndexOf("Gpu", StringComparison.OrdinalIgnoreCase) >= 0;
                 foreach (var sensor in (IEnumerable)type.GetProperty("Sensors").GetValue(hardware, null))
                 {
                     var sensorType = Convert.ToString(sensor.GetType().GetProperty("SensorType").GetValue(sensor, null));
@@ -266,9 +289,12 @@ namespace A2ZSysIns
                     if (hardwareType == "Cpu" && sensorType == "Temperature" && name.IndexOf("Distance", StringComparison.OrdinalIgnoreCase) < 0 && name.IndexOf("TjMax", StringComparison.OrdinalIgnoreCase) < 0 && number > 0 && number < 150) temps.Add(number);
                     else if (hardwareType == "Cpu" && sensorType == "Load" && (name == "CPU Total" || name == "CPU Core Max") && number >= 0 && number <= 100) loads.Add(number);
                     else if (hardwareType == "Cpu" && sensorType == "Clock" && name.IndexOf("Core", StringComparison.OrdinalIgnoreCase) >= 0 && number > 0) clocks.Add(number);
+                    else if (isGpu && sensorType == "Load" && number >= 0 && number <= 100) gpuLoads.Add(number);
+                    else if (isGpu && sensorType == "Temperature" && number > 0 && number < 150) gpuTemps.Add(number);
+                    else if (hardwareType == "Memory" && sensorType == "Load" && number >= 0 && number <= 100) memoryLoads.Add(number);
                     else if (sensorType == "Fan" && number >= 0) fans.Add(number);
                 }
-                foreach (var child in (IEnumerable)type.GetProperty("SubHardware").GetValue(hardware, null)) ReadHardware(child, temps, loads, clocks, fans);
+                foreach (var child in (IEnumerable)type.GetProperty("SubHardware").GetValue(hardware, null)) ReadHardware(child, temps, loads, clocks, fans, memoryLoads, gpuLoads, gpuTemps);
             }
 
             public void Dispose() { try { _type.GetMethod("Close").Invoke(_computer, null); } catch { } }
@@ -282,9 +308,6 @@ namespace A2ZSysIns
             return sorted.Length % 2 == 0 ? (sorted[middle - 1] + sorted[middle]) / 2.0 : sorted[middle];
         }
 
-        private sealed class SafetyAbortException : Exception
-        {
-            public SafetyAbortException(string message) : base(message) { }
-        }
+        private sealed class SafetyAbortException : Exception { public SafetyAbortException(string message) : base(message) { } }
     }
 }
