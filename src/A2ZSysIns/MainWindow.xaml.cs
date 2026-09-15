@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Media;
 
 namespace A2ZSysIns
@@ -22,13 +23,21 @@ namespace A2ZSysIns
             MaxWidth = area.Width; MaxHeight = area.Height;
             Width = Math.Min(1180, Math.Max(MinWidth, area.Width - 24));
             Height = Math.Min(760, Math.Max(MinHeight, area.Height - 24));
+            Tabs.SelectedIndex = 0;
+            ReportViewer.Document = BuildReportPlaceholder();
         }
 
         private async void Start_Click(object sender, RoutedEventArgs e)
         {
             if (string.IsNullOrWhiteSpace(TechnicianBox.Text))
             {
-                MessageBox.Show(this, "Enter the technician name before starting.", "A2Z System Inspector", MessageBoxButton.OK, MessageBoxImage.Information);
+                Tabs.SelectedIndex = 1;
+                StatusText.Text = "Enter technician name to begin";
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    TechnicianBox.Focus();
+                    TechnicianBox.SelectAll();
+                }), System.Windows.Threading.DispatcherPriority.Input);
                 return;
             }
             _report = new InspectionReport { InspectionId = DateTime.Now.ToString("yyyyMMdd-HHmmss"), StartedAt = DateTime.Now, CustomerReference = CustomerBox.Text.Trim(), JobNumber = JobBox.Text.Trim(), Technician = TechnicianBox.Text.Trim(), ReportedProblem = ProblemBox.Text.Trim() };
@@ -58,6 +67,15 @@ namespace A2ZSysIns
                 StatusText.Text = "Inspection stopped";
             }
             finally { if (_report != null) DriverAccessManager.CleanupOwnedPawnIo(_report, "inspection finished"); StartButton.IsEnabled = true; }
+        }
+
+        private FlowDocument BuildReportPlaceholder()
+        {
+            var document = new FlowDocument { Background = (Brush)FindResource("Bg"), Foreground = (Brush)FindResource("Text"), PagePadding = new Thickness(28) };
+            document.Blocks.Add(new Paragraph(new Run("NO INSPECTION REPORT YET")) { FontSize = 24, FontWeight = FontWeights.Bold, Foreground = (Brush)FindResource("Text"), Margin = new Thickness(0, 0, 0, 8) });
+            document.Blocks.Add(new Paragraph(new Run("Run an inspection to generate the customer report and technician evidence.")) { FontSize = 14, Foreground = (Brush)FindResource("Muted"), Margin = new Thickness(0, 0, 0, 18) });
+            document.Blocks.Add(new Paragraph(new Run("Start here:  LIVE SCAN  →  enter Technician name  →  RUN INSPECTION")) { FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = (Brush)FindResource("Blue") });
+            return document;
         }
 
         private void CollectSensorsWithPawnIoFallback()
@@ -230,7 +248,7 @@ namespace A2ZSysIns
         }
 
         private void CancelStress_Click(object sender, RoutedEventArgs e) { if (_stressCancellation == null) return; EvidenceEngine.Log(_report, "CPU stress cancellation requested", "Technician pressed Stop stress test."); _stressCancellation.Cancel(); }
-        private void New_Click(object sender, RoutedEventArgs e) { if (_stressCancellation != null) return; _report = null; ResultsList.ItemsSource = null; RecentEventsList.ItemsSource = null; ReportViewer.Document = null; StressUtilizationGraph.Children.Clear(); StressThermalGraph.Children.Clear(); DashboardStressGraph.Children.Clear(); Progress.Value = 0; ProgressText.Text = "Ready"; Tabs.SelectedIndex = 0; StatusText.Text = "Ready"; OverallScoreText.Text = "—"; OverallStatusBadge.Text = "NOT TESTED"; OverallStatusBadge.Foreground = (Brush)FindResource("Muted"); OverallHeadlineText.Text = "No inspection completed"; RecommendationText.Text = "Complete an inspection to receive evidence-based recommendations."; }
-        private bool Ready() { if (_report != null) return true; MessageBox.Show(this, "Complete an inspection first."); return false; }
+        private void New_Click(object sender, RoutedEventArgs e) { if (_stressCancellation != null) return; _report = null; ResultsList.ItemsSource = null; RecentEventsList.ItemsSource = null; ReportViewer.Document = BuildReportPlaceholder(); StressUtilizationGraph.Children.Clear(); StressThermalGraph.Children.Clear(); DashboardStressGraph.Children.Clear(); Progress.Value = 0; ProgressText.Text = "Ready"; Tabs.SelectedIndex = 0; StatusText.Text = "Ready"; OverallScoreText.Text = "—"; OverallStatusBadge.Text = "NOT TESTED"; OverallStatusBadge.Foreground = (Brush)FindResource("Muted"); OverallHeadlineText.Text = "No inspection completed"; RecommendationText.Text = "Complete an inspection to receive evidence-based recommendations."; }
+        private bool Ready() { if (_report != null) return true; Tabs.SelectedIndex = 1; StatusText.Text = "Enter technician name to begin"; Dispatcher.BeginInvoke(new Action(() => TechnicianBox.Focus()), System.Windows.Threading.DispatcherPriority.Input); return false; }
     }
 }
