@@ -12,6 +12,7 @@ namespace A2ZSysIns
     {
         private InspectionReport _report;
         private CancellationTokenSource _stressCancellation;
+
         public MainWindow()
         {
             InitializeComponent();
@@ -20,26 +21,6 @@ namespace A2ZSysIns
             MaxHeight = area.Height;
             Width = Math.Min(1080, Math.Max(MinWidth, area.Width - 24));
             Height = Math.Min(680, Math.Max(MinHeight, area.Height - 24));
-            AddStorageInspectorButton();
-        }
-
-        private void AddStorageInspectorButton()
-        {
-            var grid = ResultsList.Parent as Grid;
-            if (grid == null) return;
-            var console = grid.Children.OfType<ScrollViewer>().FirstOrDefault(x => Grid.GetRow(x) == 2);
-            var panel = console == null ? null : console.Content as WrapPanel;
-            if (panel == null) return;
-            var button = new Button { Content = "INDIVIDUAL STORAGE INSPECTOR", ToolTip = "Inspect one physical drive using the same evidence and interpretation engine." };
-            button.Click += IndividualStorageInspector_Click;
-            panel.Children.Insert(0, button);
-        }
-
-        private void IndividualStorageInspector_Click(object sender, RoutedEventArgs e)
-        {
-            if (!Ready()) return;
-            var window = new IndividualStorageInspectionWindow(_report) { Owner = this };
-            window.ShowDialog();
         }
 
         private async void Start_Click(object sender, RoutedEventArgs e)
@@ -54,7 +35,7 @@ namespace A2ZSysIns
                 PortableSessionLog.SetDeviceIdentity(_report.System.ContainsKey("Manufacturer") ? _report.System["Manufacturer"] : null, _report.System.ContainsKey("Model") ? _report.System["Model"] : null, _report.System.ContainsKey("Serial number") ? _report.System["Serial number"] : null);
                 EvidenceEngine.Log(_report, "Portable diagnostic location", PortableSessionLog.PathName);
                 await Step(18, "Measuring resource usage with fallback methods...", () => EvidenceEngine.Resources(_report));
-                await Step(32, "Collecting physical storage and SMART evidence...", () =>
+                await Step(32, "Detecting and scanning all physical storage devices...", () =>
                 {
                     StorageAcquisitionService.Collect(_report);
                     foreach (var drive in _report.Drives.Where(x => x.SmartAttributes.Count == 0 && x.NvmeHealth == null && x.SmartDataSource != "smartctl JSON"))
