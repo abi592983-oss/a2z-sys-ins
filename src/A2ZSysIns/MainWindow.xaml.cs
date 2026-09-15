@@ -5,6 +5,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
+using System.Windows.Media;
 
 namespace A2ZSysIns
 {
@@ -19,13 +21,25 @@ namespace A2ZSysIns
             InitializeComponent();
             var area = SystemParameters.WorkArea;
             MaxWidth = area.Width; MaxHeight = area.Height;
-            Width = Math.Min(1080, Math.Max(MinWidth, area.Width - 24));
-            Height = Math.Min(680, Math.Max(MinHeight, area.Height - 24));
+            Width = Math.Min(1180, Math.Max(MinWidth, area.Width - 24));
+            Height = Math.Min(760, Math.Max(MinHeight, area.Height - 24));
+            Tabs.SelectedIndex = 0;
+            ReportViewer.Document = BuildReportPlaceholder();
         }
 
         private async void Start_Click(object sender, RoutedEventArgs e)
         {
-            if (string.IsNullOrWhiteSpace(TechnicianBox.Text)) { MessageBox.Show(this, "Enter the technician name before starting.", "A2Z System Inspector", MessageBoxButton.OK, MessageBoxImage.Information); return; }
+            if (string.IsNullOrWhiteSpace(TechnicianBox.Text))
+            {
+                Tabs.SelectedIndex = 1;
+                StatusText.Text = "Enter technician name to begin";
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    TechnicianBox.Focus();
+                    TechnicianBox.SelectAll();
+                }), System.Windows.Threading.DispatcherPriority.Input);
+                return;
+            }
             _report = new InspectionReport { InspectionId = DateTime.Now.ToString("yyyyMMdd-HHmmss"), StartedAt = DateTime.Now, CustomerReference = CustomerBox.Text.Trim(), JobNumber = JobBox.Text.Trim(), Technician = TechnicianBox.Text.Trim(), ReportedProblem = ProblemBox.Text.Trim() };
             EvidenceEngine.Begin(_report); Tabs.SelectedIndex = 1; StartButton.IsEnabled = false;
             try
@@ -42,10 +56,26 @@ namespace A2ZSysIns
                 await Step(94, "Building customer health conclusions...", () => { Pass12NormalizationService.Apply(_report); StorageInterpretationService.Interpret(_report); StorageHealthAssessmentService.Record(_report); Scoring.Calculate(_report); SmartInterpretation.NormalizeReport(_report); AdvancedAssessment.Apply(_report); SmartInterpretation.RefreshSummary(_report); CustomerHealthAssessmentService.Apply(_report); });
                 _report.CompletedAt = DateTime.Now; Progress.Value = 100; ProgressText.Text = "Inspection completed."; StatusText.Text = "Inspection " + _report.InspectionId + " completed";
                 EvidenceEngine.Log(_report, "Session completed", "Completed at " + _report.CompletedAt.ToString("o") + "; measurements=" + _report.Measurements.Count + "; findings=" + _report.Findings.Count);
-                OverallText.Text = "Assessment: " + _report.OverallStatus; InspectionIdText.Text = "Inspection " + _report.InspectionId; ResultsList.ItemsSource = _report.Scores; ReportViewer.Document = DarkReportPreviewService.Build(_report); Tabs.SelectedIndex = 2;
+                OverallText.Text = "Assessment: " + _report.OverallStatus; InspectionIdText.Text = "Inspection " + _report.InspectionId; ResultsList.ItemsSource = _report.Scores; ReportViewer.Document = DarkReportPreviewService.Build(_report);
+                UpdateDashboard();
+                Tabs.SelectedIndex = 0;
             }
-            catch (Exception ex) { if (_report != null) EvidenceEngine.Log(_report, "Unhandled inspection error", ex.ToString()); MessageBox.Show(this, "The inspection could not complete. Temporary Inspector-owned resources will be cleaned where applicable; see the retained diagnostic log.\n\n" + ex.GetBaseException().Message, "A2Z System Inspector", MessageBoxButton.OK, MessageBoxImage.Error); StatusText.Text = "Inspection stopped"; }
+            catch (Exception ex)
+            {
+                if (_report != null) EvidenceEngine.Log(_report, "Unhandled inspection error", ex.ToString());
+                MessageBox.Show(this, "The inspection could not complete. Temporary Inspector-owned resources will be cleaned where applicable; see the retained diagnostic log.\n\n" + ex.GetBaseException().Message, "A2Z System Inspector", MessageBoxButton.OK, MessageBoxImage.Error);
+                StatusText.Text = "Inspection stopped";
+            }
             finally { if (_report != null) DriverAccessManager.CleanupOwnedPawnIo(_report, "inspection finished"); StartButton.IsEnabled = true; }
+        }
+
+        private FlowDocument BuildReportPlaceholder()
+        {
+            var document = new FlowDocument { Background = (Brush)FindResource("Bg"), Foreground = (Brush)FindResource("Text"), PagePadding = new Thickness(28) };
+            document.Blocks.Add(new Paragraph(new Run("NO INSPECTION REPORT YET")) { FontSize = 24, FontWeight = FontWeights.Bold, Foreground = (Brush)FindResource("Text"), Margin = new Thickness(0, 0, 0, 8) });
+            document.Blocks.Add(new Paragraph(new Run("Run an inspection to generate the customer report and technician evidence.")) { FontSize = 14, Foreground = (Brush)FindResource("Muted"), Margin = new Thickness(0, 0, 0, 18) });
+            document.Blocks.Add(new Paragraph(new Run("Start here:  LIVE SCAN  →  enter Technician name  →  RUN INSPECTION")) { FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = (Brush)FindResource("Blue") });
+            return document;
         }
 
         private void CollectSensorsWithPawnIoFallback()
@@ -98,7 +128,7 @@ namespace A2ZSysIns
                 var result = await CpuStressTestService.RunAsync(_report, _stressCancellation.Token, progress, sampleProgress);
                 RenderStressGraphs();
                 Pass12NormalizationService.Apply(_report); StorageInterpretationService.Interpret(_report); StorageHealthAssessmentService.Record(_report); Scoring.Calculate(_report); SmartInterpretation.NormalizeReport(_report); AdvancedAssessment.Apply(_report); SmartInterpretation.RefreshSummary(_report); CustomerHealthAssessmentService.Apply(_report);
-                ResultsList.ItemsSource = null; ResultsList.ItemsSource = _report.Scores; OverallText.Text = "CPU test: " + result.Status + " — " + result.StopReason; ReportViewer.Document = DarkReportPreviewService.Build(_report);
+                ResultsList.ItemsSource = null; ResultsList.ItemsSource = _report.Scores; OverallText.Text = "CPU test: " + result.Status + " — " + result.StopReason; ReportViewer.Document = DarkReportPreviewService.Build(_report); UpdateDashboard();
             }
             catch (Exception ex) { EvidenceEngine.Log(_report, "CPU stress UI error", ex.ToString()); MessageBox.Show(this, ex.GetBaseException().Message, "CPU stress test", MessageBoxButton.OK, MessageBoxImage.Error); }
             finally { DriverAccessManager.CleanupOwnedPawnIo(_report, "CPU stress test finished"); _stressCancellation.Dispose(); _stressCancellation = null; RunStressButton.IsEnabled = true; CancelStressButton.IsEnabled = false; StartButton.IsEnabled = true; StatusText.Text = "CPU stress test finished"; }
@@ -109,10 +139,116 @@ namespace A2ZSysIns
             if (_report == null || _report.CpuStressTest == null) return;
             CpuStressGraphService.DrawUtilization(StressUtilizationGraph, _report.CpuStressTest.Samples);
             CpuStressGraphService.DrawThermalClock(StressThermalGraph, _report.CpuStressTest.Samples);
+            if (DashboardStressGraph != null) CpuStressGraphService.DrawUtilization(DashboardStressGraph, _report.CpuStressTest.Samples);
+        }
+
+        private void UpdateDashboard()
+        {
+            if (_report == null) return;
+            var system = _report.System;
+            var model = Value(system, "Model", "Unknown device");
+            var cpu = ShortCpu(Value(system, "CPU", "CPU unavailable"));
+            var ram = Value(system, "Installed RAM", "RAM unavailable");
+            var os = Value(system, "Operating system", "Windows");
+            DeviceNameText.Text = model;
+            DeviceDetailsText.Text = cpu + "\n" + ram + "  •  " + os;
+
+            OverallScoreText.Text = _report.OverallScore.HasValue ? _report.OverallScore.Value.ToString() : "—";
+            var health = _report.CustomerHealth ?? new CustomerHealthSummary();
+            OverallStatusBadge.Text = NormalizeStatus(health.OverallStatus);
+            OverallStatusBadge.Foreground = StatusBrush(health.OverallStatus);
+            OverallHeadlineText.Text = string.IsNullOrWhiteSpace(health.Headline) ? "Inspection completed" : health.Headline;
+            RecommendationText.Text = health.RecommendedActions != null && health.RecommendedActions.Count > 0 ? string.Join("   •   ", health.RecommendedActions.Take(3)) : (health.Explanation ?? "No recommendation recorded.");
+
+            var storage = Component("Storage");
+            var temperature = Component("Temperature");
+            var ramComponent = Component("RAM");
+            var windows = Component("Windows integrity");
+            if (windows == null) windows = Component("Windows");
+            var devices = Component("Devices");
+
+            var temp = CpuTemperature();
+            TemperatureValueText.Text = temp.HasValue ? Math.Round(temp.Value, 0) + "°C" : "—";
+            TemperatureStatusText.Text = temperature == null ? "Telemetry" : NormalizeStatus(temperature.Status);
+            TemperatureStatusText.Foreground = temperature == null ? (Brush)FindResource("Muted") : StatusBrush(temperature.Status);
+
+            CpuValueText.Text = cpu.Length > 20 ? cpu.Substring(0, 20) + "…" : cpu;
+            CpuStatusText.Text = _report.CpuStressTest == null ? "Inspection complete" : NormalizeStatus(_report.CpuStressTest.Status);
+            CpuStatusText.Foreground = StatusBrush(_report.CpuStressTest == null ? "GOOD" : _report.CpuStressTest.Status);
+
+            MemoryValueText.Text = ram;
+            MemoryStatusText.Text = ramComponent == null ? (_report.MemoryUsedPercent.HasValue ? Math.Round(_report.MemoryUsedPercent.Value) + "% in use" : "Measured") : NormalizeStatus(ramComponent.Status);
+            MemoryStatusText.Foreground = ramComponent == null ? (Brush)FindResource("Muted") : StatusBrush(ramComponent.Status);
+
+            var drive = _report.Drives.FirstOrDefault();
+            StorageValueText.Text = drive == null ? "—" : (drive.RemainingLifePercent.HasValue ? Math.Round(drive.RemainingLifePercent.Value) + "%" : "Detected");
+            StorageStatusText.Text = storage == null ? (drive == null ? "Not measured" : "Detected") : NormalizeStatus(storage.Status);
+            StorageStatusText.Foreground = storage == null ? (Brush)FindResource("Muted") : StatusBrush(storage.Status);
+
+            WindowsValueText.Text = os.Length > 18 ? os.Substring(0, 18) + "…" : os;
+            WindowsStatusText.Text = windows == null ? "Measured" : NormalizeStatus(windows.Status);
+            WindowsStatusText.Foreground = windows == null ? (Brush)FindResource("Muted") : StatusBrush(windows.Status);
+
+            var problemDevices = Value(system, "Problem devices", "Not measured");
+            DevicesValueText.Text = devices != null && IsGood(devices.Status) ? "OK" : (problemDevices.IndexOf("None reported", StringComparison.OrdinalIgnoreCase) >= 0 ? "OK" : "Check");
+            DevicesStatusText.Text = devices == null ? problemDevices : NormalizeStatus(devices.Status);
+            DevicesStatusText.Foreground = devices == null ? (Brush)FindResource("Muted") : StatusBrush(devices.Status);
+
+            RecentEventsList.ItemsSource = _report.Events == null || _report.Events.Count == 0 ? null : _report.Events.OrderByDescending(x => x.Latest).Take(6).ToList();
+            RenderStressGraphs();
+        }
+
+        private ComponentHealth Component(string name)
+        {
+            if (_report == null || _report.CustomerHealth == null || _report.CustomerHealth.Components == null) return null;
+            return _report.CustomerHealth.Components.FirstOrDefault(x => string.Equals(x.Component, name, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private double? CpuTemperature()
+        {
+            if (_report == null || _report.Sensors == null) return null;
+            var sensors = _report.Sensors.Where(EvidenceEngine.ActualTemperature).Where(x => (x.Hardware ?? "").IndexOf("CPU", StringComparison.OrdinalIgnoreCase) >= 0 || (x.Name ?? "").IndexOf("CPU", StringComparison.OrdinalIgnoreCase) >= 0 || x.Name == "Core Max" || x.Name == "Core Average").ToList();
+            if (sensors.Count == 0) return null;
+            return sensors.Max(x => Convert.ToDouble(x.Current));
+        }
+
+        private static string Value(System.Collections.Generic.Dictionary<string, string> values, string key, string fallback)
+        {
+            if (values != null && values.ContainsKey(key) && !string.IsNullOrWhiteSpace(values[key])) return values[key];
+            return fallback;
+        }
+
+        private static string ShortCpu(string cpu)
+        {
+            if (string.IsNullOrWhiteSpace(cpu)) return "CPU unavailable";
+            var cut = cpu.IndexOf(" @ ", StringComparison.OrdinalIgnoreCase);
+            return (cut > 0 ? cpu.Substring(0, cut) : cpu).Trim();
+        }
+
+        private static string NormalizeStatus(string status)
+        {
+            if (string.IsNullOrWhiteSpace(status)) return "UNKNOWN";
+            return status.Replace("_", " ").ToUpperInvariant();
+        }
+
+        private Brush StatusBrush(string status)
+        {
+            var s = NormalizeStatus(status);
+            if (s.Contains("CRITICAL") || s.Contains("FAIL")) return (Brush)FindResource("Red");
+            if (s.Contains("ATTENTION") || s.Contains("WARNING") || s.Contains("DEGRADED")) return (Brush)FindResource("Amber");
+            if (s.Contains("GOOD") || s.Contains("PASS") || s.Contains("NORMAL") || s.Contains("OK") || s.Contains("COMPLETED")) return (Brush)FindResource("Green");
+            return (Brush)FindResource("Muted");
+        }
+
+        private static bool IsGood(string status)
+        {
+            if (string.IsNullOrWhiteSpace(status)) return false;
+            var s = status.ToUpperInvariant();
+            return s.Contains("GOOD") || s.Contains("PASS") || s.Contains("OK");
         }
 
         private void CancelStress_Click(object sender, RoutedEventArgs e) { if (_stressCancellation == null) return; EvidenceEngine.Log(_report, "CPU stress cancellation requested", "Technician pressed Stop stress test."); _stressCancellation.Cancel(); }
-        private void New_Click(object sender, RoutedEventArgs e) { if (_stressCancellation != null) return; _report = null; ResultsList.ItemsSource = null; ReportViewer.Document = null; StressUtilizationGraph.Children.Clear(); StressThermalGraph.Children.Clear(); Progress.Value = 0; ProgressText.Text = "Ready"; Tabs.SelectedIndex = 0; StatusText.Text = "Ready"; }
-        private bool Ready() { if (_report != null) return true; MessageBox.Show(this, "Complete an inspection first."); return false; }
+        private void New_Click(object sender, RoutedEventArgs e) { if (_stressCancellation != null) return; _report = null; ResultsList.ItemsSource = null; RecentEventsList.ItemsSource = null; ReportViewer.Document = BuildReportPlaceholder(); StressUtilizationGraph.Children.Clear(); StressThermalGraph.Children.Clear(); DashboardStressGraph.Children.Clear(); Progress.Value = 0; ProgressText.Text = "Ready"; Tabs.SelectedIndex = 0; StatusText.Text = "Ready"; OverallScoreText.Text = "—"; OverallStatusBadge.Text = "NOT TESTED"; OverallStatusBadge.Foreground = (Brush)FindResource("Muted"); OverallHeadlineText.Text = "No inspection completed"; RecommendationText.Text = "Complete an inspection to receive evidence-based recommendations."; }
+        private bool Ready() { if (_report != null) return true; Tabs.SelectedIndex = 1; StatusText.Text = "Enter technician name to begin"; Dispatcher.BeginInvoke(new Action(() => TechnicianBox.Focus()), System.Windows.Threading.DispatcherPriority.Input); return false; }
     }
 }
