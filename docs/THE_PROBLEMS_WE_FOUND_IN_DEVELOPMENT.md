@@ -169,3 +169,33 @@ This document is a permanent development history. Fixed problems are never delet
 - **Date fixed:** 2026-09-15
 - **Ever fixed:** Yes
 - **Fix / evidence:** Restored the historical entries DEV-001 through DEV-015 and recorded this incident as DEV-016.
+
+### DEV-017 — Pass 13 real-machine validation exposed provider-path differences that must remain visible
+- **Problem:** Real machines can fail on one storage acquisition path while succeeding through another provider/path, and some devices expose incomplete SMART evidence.
+- **Date identified:** 2026-09-15
+- **Area:** Storage acquisition / physical validation
+- **Impact:** A single failed provider attempt must not be treated as device failure or as proof that evidence is unavailable.
+- **Status:** Addressed in acquisition design; broader coverage remains under validation
+- **Date fixed:** —
+- **Ever fixed:** No
+- **Fix / evidence:** Pass 13 real runs confirmed useful fallback behavior, including a successful `/dev/sda` ATA fallback after direct Windows physical-drive identification failed. Missing SMART on another device was conservatively represented as UNKNOWN.
+
+### DEV-018 — Pass 13 physical validation showed that real provider behavior cannot be represented by synthetic tests alone
+- **Problem:** Synthetic scenarios can validate assessment logic but cannot reproduce every WMI, smartctl, sensor, USB/SAT, Windows-event, or device-specific behavior found on physical computers.
+- **Date identified:** 2026-09-15
+- **Area:** Testing / validation strategy
+- **Impact:** Treating synthetic PASS as physical PASS could hide provider-specific failures.
+- **Status:** Open by design
+- **Date fixed:** —
+- **Ever fixed:** No
+- **Fix / evidence:** Pass 13 explicitly separates synthetic regression coverage from multi-machine physical validation. The development index now records physical validation as the active phase.
+
+### DEV-019 — Synthetic Pass 13 scenario generation still needs stronger fault realism
+- **Problem:** Some synthetic scenario families currently populate generic/default evidence rather than fully scenario-specific faults, and provider fallback/conflict behavior is not yet modeled at complete field level.
+- **Date identified:** 2026-09-15
+- **Area:** Testing / synthetic lab
+- **Impact:** The lab may under-exercise some intended scenario names and provider-resolution edge cases.
+- **Status:** Open
+- **Date fixed:** —
+- **Ever fixed:** No
+- **Fix / evidence:** The lab is useful for deterministic horizontal regression, but additional work is needed for true high-memory utilization, scenario-specific Windows events/PnP faults, controlled provider conflicts, and field-level fallback exhaustion.
