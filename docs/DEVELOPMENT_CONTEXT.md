@@ -52,6 +52,8 @@ The guiding principle is **evidence first**: missing evidence must remain unavai
 8. **Graphs may use only real timestamped samples.** Historical values must never be invented or inferred merely to make a graph look complete.
 9. **The project must preserve development history.** Fixed problems are never deleted from the permanent problem-history document.
 10. **Real-machine validation is required before claiming that a correction works physically.** Synthetic tests alone do not constitute physical validation.
+11. **Synthetic testing is a regression aid, not a substitute for provider validation.** The synthetic lab exercises the interpretation/assessment pipeline with controlled evidence; physical machines validate actual WMI, smartctl, sensor, Windows and transport behavior.
+12. **Acquisition follows a fallback philosophy.** If a field cannot be obtained from the first provider/path, the Inspector should retry or use another applicable provider before declaring the field unavailable. Partial evidence and provenance must be retained.
 
 ## 4. Permanent project documents
 
@@ -78,6 +80,10 @@ Defines practical storage support boundaries, evidence hierarchy, unavailable fi
 ### `docs/CPU_STRESS_SAFETY.md`
 
 Defines CPU stress-test safety policy, telemetry cadence, preflight refusal, abort conditions and evidence-retention rules.
+
+### `docs/PASS13_SYNTHETIC_LAB.md`
+
+Defines the deterministic randomized synthetic inspection environment used for regression and horizontal diagnostic-pipeline testing. It supplements, but does not replace, real-machine validation.
 
 ## 5. Development phases completed
 
@@ -107,13 +113,7 @@ A real-machine SSD exposed an additional bug: an E7 `SSD Life Left` attribute ha
 
 ### Pass 4 — Health, endurance, confidence and scoring model
 
-Added `StorageHealthAssessmentService` and separated:
-
-- condition
-- condition confidence
-- endurance
-- endurance confidence
-- explanation/reason
+Added `StorageHealthAssessmentService` and separated condition, condition confidence, endurance, endurance confidence, and explanation/reason.
 
 **Why:** Endurance is useful evidence but is not equivalent to overall health or failure probability.
 
@@ -131,8 +131,6 @@ The user-facing individual-storage workflow was subsequently **removed**.
 
 **Why removed:** Normal technician workflow should automatically inspect all physical storage and provide one combined result. Manual device selection added unnecessary work and created identity/UI complexity.
 
-The backend contract remains as internal architecture/test material where useful.
-
 ### Pass 8 — Automated/synthetic validation
 
 Added synthetic validation fixtures and CI coverage. The x64 Windows build/test path was corrected. The validation suite reached 27 passing tests after the obsolete stale-telemetry test was removed.
@@ -143,34 +141,41 @@ Added synthetic validation fixtures and CI coverage. The x64 Windows build/test 
 
 Added storage support documentation, calibration documentation, the CrystalDiskInfo evidence fallback and packaging improvements.
 
-Real-machine testing exposed:
-
-- missing packaged smartctl
-- direct Windows physical-drive path failure with a working `/dev/sda` fallback
-- SSD life normalized-vs-raw interpretation error
-- additional unrelated Windows findings
-
-The packaging/acquisition path was corrected, and real-machine validation is continuing.
+Real-machine testing exposed missing packaged smartctl, direct Windows physical-drive path failure with a working `/dev/sda` fallback, SSD life normalized-vs-raw interpretation error, and additional unrelated Windows findings. The packaging/acquisition path was corrected, and real-machine validation is continuing.
 
 ### Pass 11 — CPU stress safety and telemetry
 
 Added a dedicated CPU stress safety supervisor, adaptive telemetry cadence tracking, timestamped CPU stress samples, live/report graphs and automated tests.
 
-Safety design includes:
-
-- CPU temperature telemetry required for stress
-- CPU clock telemetry required
-- CPU load telemetry required
-- preflight refusal for missing/invalid required telemetry
-- 80 °C preflight refusal threshold
-- 87 °C early-abort threshold
-- 90 °C hard-abort threshold
-- clock-collapse detection under sustained high load
-- abnormal clock-surge detection under sustained high load
-- fail-closed behavior for required telemetry loss
-- optional RAM/GPU telemetry that does not abort CPU stress merely because it is unavailable
+Safety design includes required CPU temperature/clock/load telemetry, preflight refusal, 80 °C preflight refusal, 87 °C early abort, 90 °C hard abort, clock-collapse and clock-surge detection, fail-closed telemetry loss, and optional RAM/GPU telemetry that does not abort CPU stress merely because it is unavailable.
 
 **Why:** CPU stress testing can be physically stressful to a machine, so the safety supervisor must be conservative and independent of the general diagnostic score.
+
+### Pass 12 — Diagnostic health model and customer report
+
+Added the customer-facing health model and report layer. Customer components are Storage, Temperature, RAM/resource state, Windows integrity, Windows stability, Devices, Battery, and Storage space. Overall status can be `GOOD`, `ATTENTION`, `CRITICAL`, or `INCOMPLETE`; numeric overall scoring remains withheld.
+
+Storage condition is explicitly separated from endurance. Missing storage health evidence is represented as unknown rather than silently becoming healthy or zero. Validated SSD life-remaining semantics were corrected so a value such as 36% remaining remains 36% remaining and derives 64% endurance used.
+
+Added non-repairing Windows integrity evidence using SFC `/verifyonly`, DISM `/Online /Cleanup-Image /CheckHealth`, and an online CHKDSK scan of the system volume. The dark report preview was changed to present the customer health summary first while retaining technician evidence.
+
+**Why:** The Inspector needs to turn collected evidence into a customer-understandable conclusion without hiding uncertainty or pretending that endurance is a failure probability.
+
+**Validation:** Pass 12 was merged to `main` as merge commit `7838de3099227bcf09a88d687d818db53b7eb1ba`.
+
+### Pass 13 — Dynamic horizontal synthetic inspection lab + real-machine validation
+
+Added a deterministic randomized synthetic inspection environment covering 12 scenario families: healthy-desktop, aging-ssd, failing-hdd, healthy-nvme, thermal-problem, high-memory-use, windows-integrity-problem, missing-evidence, conflicting-providers, sparse-machine, provider-fallback, and mixed-faults.
+
+The lab feeds synthetic evidence through the same normalization, interpretation, assessment, scoring, advanced-assessment, summary and customer-health chain used by the application. The historical `HS-SSD-WAVE(S) 256G` representation is included as a regression invariant: validated life 36% remaining must normalize to 36% remaining / 64% endurance used.
+
+**Why:** The project needed a repeatable horizontal environment for exercising cross-category logic and regression invariants without requiring physical hardware for every test.
+
+Pass 13 was also exercised on **real physical computers**. These runs confirmed real WMI/provider acquisition and fallback, real customer-health report generation, real PnP problem detection, conservative handling of missing SMART evidence, and CPU-stress safety behavior. One physical run successfully obtained ATA SMART through a `/dev/sda` fallback after the direct Windows physical-drive path failed. Another real machine produced a CRITICAL HDD result based on pending sectors.
+
+**Important distinction:** The synthetic lab and real-machine inspection are separate validation surfaces. The synthetic lab does not make physical provider behavior PASS by itself; the physical runs provide that evidence.
+
+**Validation:** Pass 13 was merged to `main` as merge commit `540c71078efa60b8587d8d3c06f3eb15baf167d3`. Windows CI build for the Pass 13 head succeeded. Real-machine runs have produced actual reports and logs showing provider fallback, missing-evidence handling, PnP findings, storage findings and CPU-stress safety behavior.
 
 ## 6. Current CPU telemetry/graph design
 
@@ -185,12 +190,7 @@ The distinction is deliberate:
 
 A real-machine test demonstrated why this distinction matters: the software recorded a 50 ms polling interval, while actual captured sample timestamps were typically around 120–150 ms apart. The graph must therefore not visually imply 20 Hz physical sensor updates.
 
-The graph implementation was changed to position points according to their actual `CapturedAt` timestamps rather than their array index. The report graph also records:
-
-- actual captured span
-- median actual capture interval
-- telemetry polling target
-- plotted-point count
+The graph implementation was changed to position points according to their actual `CapturedAt` timestamps rather than their array index. The report graph also records actual captured span, median actual capture interval, telemetry polling target, and plotted-point count.
 
 This is an evidence-honesty requirement, not merely a visual improvement.
 
@@ -198,16 +198,7 @@ This is an evidence-honesty requirement, not merely a visual improvement.
 
 The first real CPU stress validation captured 291 timestamped samples during a planned 60-second test. The test completed without a safety abort.
 
-Observed evidence included:
-
-- maximum CPU temperature: 69 °C
-- baseline temperature: 43.5 °C
-- baseline average clock: approximately 3492 MHz
-- minimum observed average clock: approximately 3018 MHz
-- maximum observed average clock: approximately 3592 MHz
-- CPU load reached 100%
-- RAM telemetry was captured
-- GPU telemetry was unavailable on that run
+Observed evidence included maximum CPU temperature 69 °C, baseline temperature 43.5 °C, baseline average clock approximately 3492 MHz, minimum observed average clock approximately 3018 MHz, maximum observed average clock approximately 3592 MHz, CPU load reaching 100%, RAM telemetry captured, and GPU telemetry unavailable on that run.
 
 The isolated clock dip recovered and did not meet the sustained collapse criteria. Temperature remained below the abort thresholds.
 
@@ -235,37 +226,32 @@ This validates the core behavior on that physical machine, but does **not** cons
 
 ## 9. Current known limitations / unfinished work
 
-- Pass 10 real-machine storage calibration is not considered complete until corrected acquisition/interpretation is physically rerun and compared against independent evidence.
+- Pass 10/12 storage calibration remains open where physical reruns are needed to confirm corrected endurance normalization against independent evidence.
+- Pass 13 physical validation is ongoing across multiple machines; real-world provider/normalization behavior may still require correction.
 - Storage temperature currently has current-value evidence rather than a historical timestamped series; no storage history graph may be fabricated.
 - GPU telemetry depends on what the hardware/provider exposes.
 - Battery evidence may be unavailable on systems without a usable battery/WMI source.
 - SCSI/SAS and USB/SAT evidence remains conservative and provider-dependent.
 - Storage link-speed capability inference remains conservative.
 - The existing legacy scoring code still contains migration debt; numeric overall scoring is intentionally withheld.
+- The synthetic lab currently provides controlled scenario coverage but still needs deeper field-level provider/fallback modeling and stronger scenario-specific fault generation before it can represent every physical acquisition edge case.
 - A completed 60-second CPU stress test is evidence of the recorded workload, not a guarantee of long-term stability.
 
 ## 10. Change-log rule
 
-Every future project modification must add an entry here containing at minimum:
-
-- **Date**
-- **Pass / area**
-- **What changed**
-- **Added / removed / modified**
-- **Why**
-- **Files affected**
-- **Validation status**
-- **Remaining limitations**, if any
+Every future project modification must add an entry here containing at minimum: Date, Pass/area, What changed, Added/removed/modified, Why, Files affected, Validation status, and Remaining limitations if any.
 
 Never record a change as physically validated unless the corrected artifact was actually run on a physical machine.
 
 ## 11. Current state — 2026-09-15
 
-**Active phase:** Pass 11 — CPU stress safety + high-frequency telemetry/live graphs.
+**Active phase:** Pass 13 — multi-machine physical validation and storage/provider calibration.
 
-The latest graph correction is committed on `pass-11-cpu-safety` as `2a0b3ff8343b7c21d29cd7c0a61ae7705a3fe713`. Windows build and synthetic validation both passed for that commit.
+Pass 11 and Pass 12 are merged into `main`. Pass 13 is also merged into `main`. The current application therefore contains the customer-health model, Windows integrity evidence, CPU stress safety/telemetry work, and the synthetic inspection lab.
 
-The immediate next activity is physical validation of the revised graph/cadence presentation. After that, continue Pass 10 storage calibration where still required, without losing the Pass 11 evidence work.
+Current physical testing has demonstrated real provider acquisition and fallback behavior, real customer-health conclusions, conservative handling of missing SMART evidence, PnP fault detection, and CPU stress safety refusal/completion behavior. The project is **not yet declaring Pass 13 fully closed**, because continued multi-machine testing is required to expose and resolve provider-specific normalization/acquisition issues.
+
+The next work should prioritize evidence correctness discovered on physical machines, especially storage normalization/provenance, before adding cosmetic or unrelated features.
 
 ## 12. Development history entries
 
@@ -282,6 +268,34 @@ The immediate next activity is physical validation of the revised graph/cadence 
 **Validation:** Windows build passed and synthetic validation passed for commit `2a0b3ff8343b7c21d29cd7c0a61ae7705a3fe713`.
 
 **Remaining:** Physical-machine validation of the revised visual presentation is still required.
+
+### 2026-09-15 — Pass 12 — Customer health model and report
+
+**What changed:** Added the customer-facing health model, cross-category health assessment, Windows integrity evidence and customer-first dark report preview. Corrected validated SSD life-remaining semantics.
+
+**Type:** Added / modified.
+
+**Why:** The Inspector needed a defensible customer-level conclusion while preserving technician evidence and uncertainty.
+
+**Files affected:** Pass 12 health-model, normalization, Windows-integrity, report-preview and integration files.
+
+**Validation:** PR #7 merged to `main` as `7838de3099227bcf09a88d687d818db53b7eb1ba`.
+
+**Remaining:** Physical rerun of affected storage cases remains required for calibration closure.
+
+### 2026-09-15 — Pass 13 — Dynamic synthetic inspection lab and physical validation
+
+**What changed:** Added `SyntheticInspectionLab`, its .NET Framework 4.8 runner/project and documentation. The lab generates deterministic randomized cross-category machines and validates critical health-model invariants. Pass 13 was then merged to `main` and the resulting build was exercised on real computers.
+
+**Type:** Added / merged / physically exercised.
+
+**Why:** The project needed repeatable horizontal regression coverage while also validating actual WMI, smartctl, sensor, Windows and device behavior on physical machines.
+
+**Files affected:** `src/A2ZSysIns/SyntheticInspectionLab.cs`, `tests/SyntheticInspectionLab/Program.cs`, `tests/SyntheticInspectionLab/SyntheticInspectionLab.csproj`, `docs/PASS13_SYNTHETIC_LAB.md`, plus the Pass 12 integration/model files already merged through PR #7.
+
+**Validation:** PR #8 merged to `main` as `540c71078efa60b8587d8d3c06f3eb15baf167d3`. Windows CI build for the Pass 13 head succeeded. Real-machine runs have produced actual reports and logs showing provider fallback, missing-evidence handling, PnP findings, storage findings and CPU-stress safety behavior.
+
+**Remaining:** Continue multi-machine physical validation and fix any evidence-normalization/provider issues exposed by real hardware. Do not mark synthetic coverage as equivalent to physical validation.
 
 ### 2026-09-15 — Documentation governance established
 
