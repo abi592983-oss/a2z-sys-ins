@@ -165,12 +165,12 @@ namespace A2ZSysIns
             double min, double max, double left, double top, double plotW, double plotH, Brush stroke, string label, bool first)
         {
             if (samples == null) return;
-            var valid = samples.Select((s, i) => new { Index = i, Sample = s, Value = selector(s) }).Where(x => x.Value.HasValue).ToList();
+            var valid = samples.Select(s => new { Sample = s, Value = selector(s) }).Where(x => x.Value.HasValue).ToList();
             if (valid.Count == 0) return;
             var firstCaptured = samples[0].CapturedAt;
             var lastCaptured = samples[samples.Count - 1].CapturedAt;
             var totalSeconds = Math.Max(0.001, (lastCaptured - firstCaptured).TotalSeconds);
-            var points = new PointCollection();
+            var points = new List<Point>();
             foreach (var item in valid)
             {
                 var elapsedSeconds = Math.Max(0, (item.Sample.CapturedAt - firstCaptured).TotalSeconds);
@@ -180,8 +180,26 @@ namespace A2ZSysIns
                 var y = top + plotH * (1 - ratio);
                 points.Add(new Point(x, y));
             }
-            if (points.Count >= 2)
-                canvas.Children.Add(new Polyline { Points = points, Stroke = stroke, StrokeThickness = first ? 2.0 : 1.5, SnapsToDevicePixels = true });
+            if (points.Count < 2) return;
+
+            // Smooth the display only. Raw samples remain unchanged in the report/log.
+            var geometry = new StreamGeometry();
+            using (var context = geometry.Open())
+            {
+                context.BeginFigure(points[0], false, false);
+                for (var i = 0; i < points.Count - 1; i++)
+                {
+                    var p0 = i == 0 ? points[i] : points[i - 1];
+                    var p1 = points[i];
+                    var p2 = points[i + 1];
+                    var p3 = i + 2 < points.Count ? points[i + 2] : p2;
+                    var c1 = new Point(p1.X + (p2.X - p0.X) / 6.0, p1.Y + (p2.Y - p0.Y) / 6.0);
+                    var c2 = new Point(p2.X - (p3.X - p1.X) / 6.0, p2.Y - (p3.Y - p1.Y) / 6.0);
+                    context.BezierTo(c1, c2, p2, true);
+                }
+            }
+            geometry.Freeze();
+            canvas.Children.Add(new Path { Data = geometry, Stroke = stroke, StrokeThickness = first ? 2.2 : 1.7, SnapsToDevicePixels = true, IsHitTestVisible = false });
         }
 
         private static void AddLegend(Canvas canvas, double x, double y, string a, string b, string c)
