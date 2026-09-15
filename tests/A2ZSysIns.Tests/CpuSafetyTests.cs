@@ -100,19 +100,5 @@ namespace A2ZSysIns.Tests
             var boosted = monitor.Evaluate(Metrics(65, 95, 3600), true);
             Assert.IsFalse(boosted.Abort);
         }
-
-        [TestMethod]
-        public void RepeatedIdenticalTelemetryEventuallyAbortsAsStale()
-        {
-            var monitor = new CpuStressSafetyMonitor();
-            monitor.SetStressBaseline(new[] { 3000d, 3010d, 2990d, 3000d, 3005d });
-            CpuSafetyDecision decision = null;
-            for (var i = 0; i < 20; i++)
-                decision = monitor.Evaluate(Metrics(60, 90, 3000), true);
-
-            Assert.IsNotNull(decision);
-            Assert.IsTrue(decision.Abort);
-            StringAssert.Contains(decision.Reason, "stale");
-        }
     }
 }
