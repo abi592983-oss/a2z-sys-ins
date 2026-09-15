@@ -31,12 +31,11 @@ namespace A2ZSysIns
         internal const int HistoryLimit = 8;
 
         private readonly Queue<double> _clocks = new Queue<double>();
-        private readonly Queue<double> _loads = new Queue<double>();
         private int _clockDropCount;
         private int _clockSurgeCount;
-        private int _invalidTelemetryCount;
         private int _unchangedTelemetryCount;
         private CpuSafetyMetrics _last;
+        private bool _stressBaselineSet;
 
         public double? BaselineClockMHz { get; private set; }
 
@@ -44,6 +43,20 @@ namespace A2ZSysIns
         {
             if (clockMHz >= MinimumUsableClockMHz && clockMHz < 10000)
                 BaselineClockMHz = clockMHz;
+        }
+
+        // Idle CPU clocks are intentionally not treated as the stress baseline: power management
+        // and boost can legitimately move them by large amounts. Establish this only after load begins.
+        public void SetStressBaseline(IEnumerable<double> clocks)
+        {
+            var valid = clocks == null ? new double[0] : clocks.Where(IsUsableClock).ToArray();
+            if (valid.Length == 0) return;
+            BaselineClockMHz = Median(valid);
+            _stressBaselineSet = true;
+            _clocks.Clear();
+            foreach (var value in valid) Add(_clocks, value);
+            _clockDropCount = 0;
+            _clockSurgeCount = 0;
         }
 
         public CpuSafetyDecision Evaluate(CpuSafetyMetrics metrics, bool underStress)
@@ -63,8 +76,7 @@ namespace A2ZSysIns
             if (underStress && (!metrics.CpuLoadPercent.HasValue || metrics.CpuLoadPercent.Value < 0 || metrics.CpuLoadPercent.Value > 100))
                 return AbortNow("CPU load telemetry was lost or became invalid during the stress test.");
 
-            if (metrics.AverageCoreClockMHz.HasValue &&
-                (metrics.AverageCoreClockMHz.Value < MinimumUsableClockMHz || metrics.AverageCoreClockMHz.Value >= 10000))
+            if (metrics.AverageCoreClockMHz.HasValue && !IsUsableClock(metrics.AverageCoreClockMHz.Value))
                 return AbortNow("CPU clock telemetry became physically implausible.");
 
             if (metrics.CpuLoadPercent.HasValue && (metrics.CpuLoadPercent.Value < 0 || metrics.CpuLoadPercent.Value > 100))
@@ -76,10 +88,8 @@ namespace A2ZSysIns
             if (metrics.AverageCoreClockMHz.HasValue)
             {
                 Add(_clocks, metrics.AverageCoreClockMHz.Value);
-                if (!BaselineClockMHz.HasValue)
-                    SetBaseline(metrics.AverageCoreClockMHz.Value);
 
-                if (underStress && BaselineClockMHz.HasValue && metrics.CpuLoadPercent.GetValueOrDefault() >= 70)
+                if (underStress && _stressBaselineSet && metrics.CpuLoadPercent.GetValueOrDefault() >= 70)
                 {
                     var median = Median(_clocks);
                     var dropRatio = 1.0 - metrics.AverageCoreClockMHz.Value / Math.Max(1.0, median);
@@ -122,6 +132,8 @@ namespace A2ZSysIns
         {
             return new CpuSafetyDecision { Abort = true, Reason = reason, Assessment = "ABORT" };
         }
+
+        private static bool IsUsableClock(double value) => value >= MinimumUsableClockMHz && value < 10000;
 
         private static void Add(Queue<double> queue, double value)
         {
