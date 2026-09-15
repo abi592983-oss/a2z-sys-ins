@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace A2ZSysIns
 {
-    internal sealed class CpuSafetyMetrics
+    internal class CpuSafetyMetrics
     {
         public double? TemperatureC;
         public double? CpuLoadPercent;
@@ -45,8 +45,6 @@ namespace A2ZSysIns
                 BaselineClockMHz = clockMHz;
         }
 
-        // Idle CPU clocks are intentionally not treated as the stress baseline: power management
-        // and boost can legitimately move them by large amounts. Establish this only after load begins.
         public void SetStressBaseline(IEnumerable<double> clocks)
         {
             var valid = clocks == null ? new double[0] : clocks.Where(IsUsableClock).ToArray();
