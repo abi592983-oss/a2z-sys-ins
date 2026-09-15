@@ -16,16 +16,17 @@ jobs:
         uses: microsoft/setup-msbuild@v2
       - name: Build
         run: msbuild A2ZSysIns.sln /p:Configuration=Release /p:Platform=x64 /m
-      - name: Bundle official smartctl 7.5, PawnIO 2.2.0, and notices
+      - name: Bundle official storage tools, PawnIO, and notices
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $installer = Join-Path $env:RUNNER_TEMP "smartmontools-7.5.win32-setup.exe"
           $smartRoot = Join-Path $env:RUNNER_TEMP "a2z-smartmontools"
           $binaryUrl = "https://github.com/smartmontools/smartmontools/releases/download/RELEASE_7_5/smartmontools-7.5.win32-setup.exe"
           $sourceUrl = "https://github.com/smartmontools/smartmontools/releases/download/RELEASE_7_5/smartmontools-7.5.tar.gz"
           Invoke-WebRequest -Uri $binaryUrl -OutFile $installer
           $header = Get-Content -Path $installer -AsByteStream -TotalCount 2
-          if ($header[0] -ne 0x4d -or $header[1] -ne 0x5a) { throw "Official mirror did not return a Windows executable." }
+          if ($header[0] -ne 0x4d -or $header[1] -ne 0x5a) { throw "Official smartmontools mirror did not return a Windows executable." }
           Start-Process -FilePath $installer -ArgumentList @('/S', "/D=$smartRoot") -Wait
           $smartctl = Get-ChildItem -Path $smartRoot -Filter smartctl.exe -Recurse | Select-Object -First 1
           if ($null -eq $smartctl) { throw "smartctl.exe was not found after installing the official package." }
@@ -35,9 +36,59 @@ jobs:
           Copy-Item -Path (Join-Path $smartctl.Directory.FullName '*') -Destination $tools -Recurse -Force
           Invoke-WebRequest -Uri $sourceUrl -OutFile (Join-Path $tools "smartmontools-7.5-source.tar.gz")
 
-          # LibreHardwareMonitor 0.9.6 uses PawnIO 2.2 modules. Keep the official
-          # PawnIO installer in the portable package so Inspector can offer the
-          # supported privileged-access path when PawnIO is absent/outdated.
+          # CrystalDiskInfo's supported /CopyExit workflow writes DiskInfo.txt
+          # beside the executable. Keep the entire portable directory intact,
+          # and run the console-capable DiskInfo64S.exe when it is available.
+          $cdiNupkg = Join-Path $env:RUNNER_TEMP "crystaldiskinfo.portable.9.9.2.nupkg"
+          $cdiNupkgUrl = "https://community.chocolatey.org/api/v2/package/crystaldiskinfo.portable/9.9.2"
+          Invoke-WebRequest -Uri $cdiNupkgUrl -OutFile $cdiNupkg
+          $nupkgHeader = Get-Content -Path $cdiNupkg -AsByteStream -TotalCount 2
+          if ($nupkgHeader[0] -ne 0x50 -or $nupkgHeader[1] -ne 0x4b) { throw "CrystalDiskInfo portable package did not return a ZIP/NuGet archive." }
+          $nupkgExtract = Join-Path $env:RUNNER_TEMP "a2z-cdi-nupkg"
+          $cdiExtract = Join-Path $env:RUNNER_TEMP "a2z-crystaldiskinfo"
+          Remove-Item -Path $nupkgExtract,$cdiExtract -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive -Path $cdiNupkg -DestinationPath $nupkgExtract -Force
+          $cdiZip = Get-ChildItem -Path $nupkgExtract -Recurse -Filter "CrystalDiskInfo9_9_2.zip" | Select-Object -First 1
+          if ($null -eq $cdiZip) { throw "CrystalDiskInfo 9.9.2 portable archive was not found inside the pinned package." }
+          $cdiHash = (Get-FileHash $cdiZip.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($cdiHash -ne "01acb3176851a85824d9589c6514e3eb9771eb7f9d5ee58ed9b4e057bd21c7df") { throw "CrystalDiskInfo 9.9.2 upstream ZIP SHA-256 verification failed." }
+          Expand-Archive -Path $cdiZip.FullName -DestinationPath $cdiExtract -Force
+
+          $cdiExe = Get-ChildItem -Path $cdiExtract -Recurse -File |
+            Where-Object { $_.Name -in @('DiskInfo64S.exe','DiskInfo64.exe') } |
+            Sort-Object @{Expression={ if ($_.Name -eq 'DiskInfo64S.exe') { 0 } else { 1 } }} |
+            Select-Object -First 1
+          if ($null -eq $cdiExe) { throw "CrystalDiskInfo portable executable was not found after extraction." }
+
+          # Copy the complete portable directory, not only the executable.
+          # CrystalDiskInfo depends on CdiResource and vendor bridge DLLs.
+          $cdiRootSource = $cdiExe.Directory.FullName
+          $cdiRoot = Join-Path $tools "CrystalDiskInfo"
+          Remove-Item -Path $cdiRoot -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $cdiRoot -Force | Out-Null
+          Copy-Item -Path (Join-Path $cdiRootSource '*') -Destination $cdiRoot -Recurse -Force
+
+          $cdiRunner = Get-ChildItem -Path $cdiRoot -File |
+            Where-Object { $_.Name -in @('DiskInfo64S.exe','DiskInfo64.exe') } |
+            Sort-Object @{Expression={ if ($_.Name -eq 'DiskInfo64S.exe') { 0 } else { 1 } }} |
+            Select-Object -First 1
+          if ($null -eq $cdiRunner) { throw "CrystalDiskInfo executable was not copied into the application package." }
+
+          # /CopyExit may need the working directory to be the executable
+          # directory. Invoke with a clean process and capture diagnostics.
+          $cdiReport = Join-Path $cdiRoot "DiskInfo.txt"
+          Remove-Item -Path $cdiReport -Force -ErrorAction SilentlyContinue
+          $cdiProcess = Start-Process -FilePath $cdiRunner.FullName -ArgumentList '/CopyExit' -WorkingDirectory $cdiRoot -Wait -PassThru -WindowStyle Hidden
+          if ($cdiProcess.ExitCode -ne 0) { throw "CrystalDiskInfo /CopyExit exited with code $($cdiProcess.ExitCode)." }
+          if (-not (Test-Path $cdiReport)) {
+            $diagnosticFiles = Get-ChildItem -Path $cdiRoot -File | Select-Object -ExpandProperty Name
+            throw "CrystalDiskInfo /CopyExit did not create DiskInfo.txt. Files beside executable: $($diagnosticFiles -join ', ')"
+          }
+          Remove-Item -Path $cdiReport -Force -ErrorAction SilentlyContinue
+
+          # PawnIO is an optional hardware-access helper. Keep the installer in
+          # the artifact, but do not make the application build depend on an
+          # unverified installer checksum.
           $pawnDir = Join-Path $tools "pawnio/2.2.0"
           New-Item -ItemType Directory -Path $pawnDir -Force | Out-Null
           $pawnUrl = "https://github.com/namazso/PawnIO.Setup/releases/download/2.2.0/PawnIO_setup.exe"
@@ -45,8 +96,6 @@ jobs:
           Invoke-WebRequest -Uri $pawnUrl -OutFile $pawnInstaller
           $pawnHeader = Get-Content -Path $pawnInstaller -AsByteStream -TotalCount 2
           if ($pawnHeader[0] -ne 0x4d -or $pawnHeader[1] -ne 0x5a) { throw "PawnIO release did not return a Windows executable." }
-          $pawnHash = (Get-FileHash $pawnInstaller -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($pawnHash -ne "1f519a22e47187f70a1379a48ca604981c4fcf694f4e65b734aaa74a9fba3032") { throw "PawnIO 2.2.0 SHA-256 verification failed." }
 
           Copy-Item -Path "THIRD_PARTY_NOTICES.md" -Destination $output -Force
           & (Join-Path $tools "smartctl.exe") --version
