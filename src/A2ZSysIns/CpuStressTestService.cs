@@ -218,13 +218,8 @@ namespace A2ZSysIns
             }, token)).ToArray();
         }
 
-        private sealed class CpuMetrics
+        private sealed class CpuMetrics : CpuSafetyMetrics
         {
-            public double? MaximumTemperatureC;
-            public double? CpuLoadPercent;
-            public double? AverageCoreClockMHz;
-            public double? MaximumCoreClockMHz;
-            public double? FanRpm;
         }
 
         private sealed class CpuSensorSession : IDisposable
@@ -248,7 +243,7 @@ namespace A2ZSysIns
                 foreach (var hardware in (IEnumerable)_type.GetProperty("Hardware").GetValue(_computer, null)) ReadHardware(hardware, temps, loads, clocks, fans);
                 return new CpuMetrics
                 {
-                    MaximumTemperatureC = temps.Count == 0 ? (double?)null : temps.Max(),
+                    TemperatureC = temps.Count == 0 ? (double?)null : temps.Max(),
                     CpuLoadPercent = loads.Count == 0 ? (double?)null : loads.Max(),
                     AverageCoreClockMHz = clocks.Count == 0 ? (double?)null : clocks.Average(),
                     MaximumCoreClockMHz = clocks.Count == 0 ? (double?)null : clocks.Max(),
