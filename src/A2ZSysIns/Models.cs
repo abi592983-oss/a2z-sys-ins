@@ -67,8 +67,6 @@ namespace A2ZSysIns
         [DataMember] public string LinkCurrent;
         [DataMember] public string LinkMaximum;
         [DataMember] public Dictionary<string, long> Attributes = new Dictionary<string, long>();
-
-        // Pass 1 evidence model: preserve semantics instead of reducing SMART to ID -> raw value.
         [DataMember] public List<SmartAttributeRecord> SmartAttributes = new List<SmartAttributeRecord>();
         [DataMember] public NvmeHealthRecord NvmeHealth;
         [DataMember] public StorageEvidenceInfo StorageEvidence = new StorageEvidenceInfo();
@@ -204,17 +202,24 @@ namespace A2ZSysIns
         [DataMember] public int ActualDurationSeconds;
         [DataMember] public double? BaselineTemperatureC;
         [DataMember] public double? MaximumTemperatureC;
+        [DataMember] public double? BaselineClockMHz;
+        [DataMember] public double? MinimumObservedClockMHz;
+        [DataMember] public double? MaximumObservedClockMHz;
         [DataMember] public long WorkIterations;
         [DataMember] public List<CpuStressSample> Samples = new List<CpuStressSample>();
     }
     [DataContract] public sealed class CpuStressSample
     {
         [DataMember] public int ElapsedSeconds;
+        [DataMember] public int ElapsedMilliseconds;
+        [DataMember] public DateTime CapturedAt;
         [DataMember] public int TargetLoadPercent;
         [DataMember] public double TemperatureC;
         [DataMember] public double? ObservedCpuLoadPercent;
         [DataMember] public double? AverageCoreClockMHz;
         [DataMember] public double? MaximumCoreClockMHz;
         [DataMember] public double? FanRpm;
+        [DataMember] public bool SafetySampleValid = true;
+        [DataMember] public string SafetyAssessment = "Observed";
     }
 }
