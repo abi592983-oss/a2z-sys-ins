@@ -14,6 +14,7 @@ namespace A2ZSysIns
     {
         private const int SampleIntervalMilliseconds = 200;
         private const int PreflightSamples = 6;
+        private const int StressBaselineSamples = 5;
         private const double MaximumPreflightTemperatureC = CpuStressSafetyMonitor.PreflightTemperatureC;
 
         public static async Task<CpuStressResult> RunAsync(InspectionReport report, CancellationToken cancellation, IProgress<string> progress)
@@ -77,23 +78,27 @@ namespace A2ZSysIns
                         return Finish(report, result, timer);
                     }
 
-                    safety.SetBaseline(baselineClock);
-                    result.BaselineClockMHz = baselineClock;
                     result.BaselineTemperatureC = baselineTemperature;
                     result.MaximumTemperatureC = baselineTemperature;
+                    result.BaselineClockMHz = baselineClock;
                     result.MinimumObservedClockMHz = baselineClock;
                     result.MaximumObservedClockMHz = baselineClock;
 
                     var stages = new[] { Tuple.Create(40, 15), Tuple.Create(70, 15), Tuple.Create(100, 30) };
+                    var stressTimer = Stopwatch.StartNew();
+                    var stressBaselineClocks = new List<double>();
+                    var stressBaselineEstablished = false;
+
                     foreach (var stage in stages)
                     {
                         using (var stageCancel = CancellationTokenSource.CreateLinkedTokenSource(cancellation))
                         {
                             var workers = StartWorkers(stage.Item1, stageCancel.Token, result);
+                            var stageTimer = Stopwatch.StartNew();
                             try
                             {
                                 var nextUiUpdate = 0L;
-                                while (timer.Elapsed.TotalSeconds < stages.Take(Array.IndexOf(stages, stage) + 1).Sum(x => x.Item2))
+                                while (stageTimer.ElapsedMilliseconds < stage.Item2 * 1000L)
                                 {
                                     cancellation.ThrowIfCancellationRequested();
                                     await Task.Delay(SampleIntervalMilliseconds, cancellation);
@@ -102,8 +107,20 @@ namespace A2ZSysIns
                                     if (decision.Abort)
                                         throw new SafetyAbortException(decision.Reason);
 
+                                    if (!stressBaselineEstablished && metrics.AverageCoreClockMHz.HasValue)
+                                    {
+                                        stressBaselineClocks.Add(metrics.AverageCoreClockMHz.Value);
+                                        if (stressBaselineClocks.Count >= StressBaselineSamples)
+                                        {
+                                            safety.SetStressBaseline(stressBaselineClocks);
+                                            stressBaselineEstablished = true;
+                                            result.BaselineClockMHz = safety.BaselineClockMHz;
+                                            EvidenceEngine.Log(report, "CPU stress baseline established", "Load baseline clock=" + safety.BaselineClockMHz.Value.ToString("0") + " MHz");
+                                        }
+                                    }
+
                                     var now = DateTime.Now;
-                                    var elapsedMs = (int)Math.Min(int.MaxValue, timer.ElapsedMilliseconds);
+                                    var elapsedMs = (int)Math.Min(int.MaxValue, stressTimer.ElapsedMilliseconds);
                                     var sample = new CpuStressSample
                                     {
                                         ElapsedSeconds = elapsedMs / 1000,
@@ -138,6 +155,7 @@ namespace A2ZSysIns
                             }
                             finally
                             {
+                                stageTimer.Stop();
                                 stageCancel.Cancel();
                                 try { await Task.WhenAll(workers); } catch (OperationCanceledException) { }
                             }
