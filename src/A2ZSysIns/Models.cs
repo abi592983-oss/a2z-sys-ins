@@ -219,6 +219,11 @@ namespace A2ZSysIns
         [DataMember] public double? AverageCoreClockMHz;
         [DataMember] public double? MaximumCoreClockMHz;
         [DataMember] public double? FanRpm;
+        [DataMember] public double? MemoryUsedPercent;
+        [DataMember] public double? GpuLoadPercent;
+        [DataMember] public double? GpuTemperatureC;
+        [DataMember] public string TelemetryFreshness = "Observed";
+        [DataMember] public int TelemetryPollIntervalMilliseconds;
         [DataMember] public bool SafetySampleValid = true;
         [DataMember] public string SafetyAssessment = "Observed";
     }
