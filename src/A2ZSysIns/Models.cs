@@ -17,8 +17,8 @@ namespace A2ZSysIns
     [DataContract]
     public sealed class InspectionReport
     {
-        [DataMember] public string SchemaVersion = "2.4";
-        [DataMember] public string RuleSetVersion = "2.4-correlated-diagnostics";
+        [DataMember] public string SchemaVersion = "2.5";
+        [DataMember] public string RuleSetVersion = "2.5-customer-health";
         [DataMember] public List<Measurement> Measurements = new List<Measurement>();
         [DataMember] public PersistentDiagnosticLog DiagnosticLog = new PersistentDiagnosticLog();
         [DataMember] public List<VolumeRecord> Volumes = new List<VolumeRecord>();
@@ -47,6 +47,30 @@ namespace A2ZSysIns
         [DataMember] public string CustomerSummary;
         [DataMember] public List<string> PriorityActions = new List<string>();
         [DataMember] public List<string> Limitations = new List<string>();
+        [DataMember] public CustomerHealthSummary CustomerHealth = new CustomerHealthSummary();
+    }
+
+    [DataContract]
+    public sealed class CustomerHealthSummary
+    {
+        [DataMember] public string OverallStatus = "INCOMPLETE";
+        [DataMember] public string Headline = "Inspection incomplete";
+        [DataMember] public string Explanation = "The inspection did not collect enough evidence for a reliable customer conclusion.";
+        [DataMember] public List<ComponentHealth> Components = new List<ComponentHealth>();
+        [DataMember] public List<string> RecommendedActions = new List<string>();
+        [DataMember] public List<string> Limitations = new List<string>();
+    }
+
+    [DataContract]
+    public sealed class ComponentHealth
+    {
+        [DataMember] public string Component;
+        [DataMember] public string Status;
+        [DataMember] public string Title;
+        [DataMember] public string Explanation;
+        [DataMember] public string Action;
+        [DataMember] public string Confidence = "Moderate";
+        [DataMember] public string Evidence;
     }
 
     [DataContract]
