@@ -16,21 +16,30 @@ namespace A2ZSysIns
 
         public static FlowDocument Build(InspectionReport r)
         {
-            EvidenceEngine.Log(r, "Dark report preview generated", "Dark technician preview built independently from printable PDF output.");
-            var d = new FlowDocument
-            {
-                PagePadding = new Thickness(34), FontFamily = new FontFamily("Segoe UI"), FontSize = 10.5,
-                Foreground = Text, Background = Brushes.Black, ColumnGap = 0, ColumnWidth = double.PositiveInfinity
-            };
+            EvidenceEngine.Log(r, "Dark report preview generated", "Customer-first health summary followed by technician evidence.");
+            var d = new FlowDocument { PagePadding = new Thickness(34), FontFamily = new FontFamily("Segoe UI"), FontSize = 10.5, Foreground = Text, Background = Brushes.Black, ColumnGap = 0, ColumnWidth = double.PositiveInfinity };
             d.Blocks.Add(new Paragraph(new Run("A2Z SYSTEM INSPECTOR")) { FontSize = 23, FontWeight = FontWeights.Bold, Foreground = Accent, Margin = new Thickness(0, 0, 0, 2) });
-            d.Blocks.Add(new Paragraph(new Run("Computer Health Inspection Report - dark technician preview")) { FontSize = 12, Foreground = Muted, Margin = new Thickness(0, 0, 0, 14) });
+            d.Blocks.Add(new Paragraph(new Run("Computer Health Inspection Report - customer summary + technician evidence")) { FontSize = 12, Foreground = Muted, Margin = new Thickness(0, 0, 0, 14) });
             AddKey(d, "Inspection", r.InspectionId); AddKey(d, "Customer / reference", r.CustomerReference); AddKey(d, "Technician", r.Technician);
             AddKey(d, "Completed", r.CompletedAt == default(DateTime) ? "N/A" : r.CompletedAt.ToString("yyyy-MM-dd HH:mm")); AddKey(d, "Reported problem", r.ReportedProblem);
 
-            d.Blocks.Add(new Paragraph(new Run(Safe(r.OverallStatus))) { FontSize = 17, FontWeight = FontWeights.Bold, Foreground = Accent, Background = Surface, BorderBrush = Line, BorderThickness = new Thickness(1), Padding = new Thickness(10), Margin = new Thickness(0, 14, 0, 8) });
-            d.Blocks.Add(Paragraph(Safe(r.CustomerSummary)));
-            Heading(d, "Priority actions");
-            if (r.PriorityActions.Count == 0) d.Blocks.Add(Paragraph("No immediate action was generated from the available evidence.")); else foreach (var x in r.PriorityActions) d.Blocks.Add(Paragraph("- " + x));
+            var h = r.CustomerHealth ?? new CustomerHealthSummary();
+            d.Blocks.Add(new Paragraph(new Run(Safe(h.OverallStatus))) { FontSize = 17, FontWeight = FontWeights.Bold, Foreground = Accent, Background = Surface, BorderBrush = Line, BorderThickness = new Thickness(1), Padding = new Thickness(10), Margin = new Thickness(0, 14, 0, 8) });
+            d.Blocks.Add(Paragraph(Safe(h.Headline) + ". " + Safe(h.Explanation)));
+            Heading(d, "Your PC at a glance");
+            foreach (var c in h.Components)
+            {
+                var p = new Paragraph { Margin = new Thickness(0, 3, 0, 6), Padding = new Thickness(8), Background = Surface, BorderBrush = Line, BorderThickness = new Thickness(1) };
+                p.Inlines.Add(new Run(Safe(c.Status) + "  |  " + Safe(c.Component) + " — " + Safe(c.Title) + "\n") { FontWeight = FontWeights.Bold, Foreground = Accent });
+                p.Inlines.Add(new Run(Safe(c.Explanation) + (string.IsNullOrWhiteSpace(c.Action) ? "" : "\nRecommended: " + c.Action)));
+                d.Blocks.Add(p);
+            }
+            Heading(d, "What you should do");
+            if (h.RecommendedActions.Count == 0) d.Blocks.Add(Paragraph("No immediate action was generated from the available evidence.")); else foreach (var x in h.RecommendedActions) d.Blocks.Add(Paragraph("- " + x));
+
+            Heading(d, "Diagnostic limitations");
+            if (h.Limitations.Count == 0) d.Blocks.Add(Paragraph("No additional limitations were recorded.")); else foreach (var x in h.Limitations) d.Blocks.Add(Paragraph("- " + x));
+
             Heading(d, "Evidence summary"); foreach (var s in r.Scores) AddEvidence(d, s.Category, s.Status, s.Reason);
             Heading(d, "Findings");
             if (r.Findings.Count == 0) d.Blocks.Add(Paragraph("No findings recorded."));
@@ -47,14 +56,13 @@ namespace A2ZSysIns
             else { foreach (var x in unavailable) d.Blocks.Add(Paragraph("- " + Safe(x.Target) + ": " + Safe(x.Reason))); foreach (var x in r.Limitations.Distinct()) d.Blocks.Add(Paragraph("- " + x)); }
 
             Heading(d, "Technical evidence"); foreach (var x in r.System) AddKey(d, x.Key, x.Value);
-            Heading(d, "Storage"); foreach (var x in r.Drives) AddEvidence(d, Safe(x.Model), Safe(x.Assessment), "SMART " + Safe(x.SmartStatus) + "; life indicator " + (x.RemainingLifePercent.HasValue ? x.RemainingLifePercent.Value.ToString("0") + "%" : "not measured"));
+            Heading(d, "Storage"); foreach (var x in r.Drives) AddEvidence(d, Safe(x.Model), Safe(x.Assessment), "SMART " + Safe(x.SmartStatus) + "; life remaining " + (x.RemainingLifePercent.HasValue ? x.RemainingLifePercent.Value.ToString("0") + "%" : "not measured") + "; endurance used " + (x.EnduranceUsedPercent.HasValue ? x.EnduranceUsedPercent.Value.ToString("0") + "%" : "not measured"));
             Heading(d, "CPU stress test");
             if (r.CpuStressTest == null || r.CpuStressTest.Samples == null || r.CpuStressTest.Samples.Count == 0) d.Blocks.Add(Paragraph("Not run or no actual telemetry samples were captured; no graph is fabricated."));
             else
             {
                 var t = r.CpuStressTest;
-                AddEvidence(d, "Status", Safe(t.Status), Safe(t.StopReason));
-                AddKey(d, "Duration", t.ActualDurationSeconds + " s"); AddKey(d, "Maximum CPU temperature", t.MaximumTemperatureC.HasValue ? t.MaximumTemperatureC.Value.ToString("0.0") + " °C" : "N/A");
+                AddEvidence(d, "Status", Safe(t.Status), Safe(t.StopReason)); AddKey(d, "Duration", t.ActualDurationSeconds + " s"); AddKey(d, "Maximum CPU temperature", t.MaximumTemperatureC.HasValue ? t.MaximumTemperatureC.Value.ToString("0.0") + " °C" : "N/A");
                 d.Blocks.Add(new BlockUIContainer(CpuStressGraphService.BuildReportGraph(r)) { Margin = new Thickness(0, 4, 0, 8) });
             }
             Heading(d, "Windows events"); foreach (var x in r.Events) AddEvidence(d, Safe(x.Source) + " / " + x.EventId, x.Count + " event(s)", Safe(x.Cause));
