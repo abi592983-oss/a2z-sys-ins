@@ -32,8 +32,6 @@ namespace A2ZSysIns
                 attr.Interpretation = null;
             }
 
-            // Legacy Attributes is retained as a compatibility projection. Raw
-            // evidence remains available in SmartAttributes/RawEvidence.
             RemoveLegacySemanticKeys(drive);
 
             foreach (var attr in drive.SmartAttributes)
@@ -52,7 +50,7 @@ namespace A2ZSysIns
                     Validate(attr, "Current pending sector count; non-zero values indicate sectors awaiting successful rewrite/remap handling.");
                     Project(drive, attr);
                 }
-                else if (id == 198 && IsAny(name, "offline_uncorrectable", "uncorrectable_sector_count", "offline_uncorrectable"))
+                else if (id == 198 && IsAny(name, "offline_uncorrectable", "uncorrectable_sector_count"))
                 {
                     Validate(attr, "Offline uncorrectable sector count; non-zero values are a high-risk media indicator.");
                     Project(drive, attr);
@@ -122,8 +120,6 @@ namespace A2ZSysIns
         private static void InterpretScsi(DriveInfoRecord drive)
         {
             if (!drive.StorageEvidence.HasScsiHealth) return;
-            // A grown-defect/error log is evidence worth retaining, but without a
-            // vendor/controller-specific rule it is not promoted to failure.
             if (drive.NvmeHealth == null && !drive.SmartPassed.HasValue)
                 drive.Assessment = "Measured; SCSI health evidence available";
         }
@@ -157,12 +153,19 @@ namespace A2ZSysIns
 
         private static void InterpretLifeAttribute(DriveInfoRecord drive, SmartAttributeRecord attr)
         {
-            if (!attr.RawValue.HasValue) return;
-            var value = attr.RawValue.Value;
+            // Important: vendor SSD life attributes commonly expose the life
+            // percentage in the normalized SMART VALUE while raw.value is a
+            // vendor-specific counter. Example: this machine's E7 SSD Life Left
+            // has normalized value 64 and raw value 36. Prefer the validated
+            // normalized value and use raw only when no normalized value exists.
+            double? source = attr.NormalizedValue.HasValue ? attr.NormalizedValue.Value : (double?)attr.RawValue;
+            if (!source.HasValue) return;
+
+            var value = source.Value;
             var name = Normalize(attr.Name);
             double remaining;
 
-            if (name.Contains("lifetime_remaining") || name.Contains("life_left") || name.Contains("remaining_lifetime"))
+            if (name.Contains("lifetime_remaining") || name.Contains("life_left") || name.Contains("remaining_lifetime") || name.Contains("percent_lifetime_remain") || name.Contains("percentage_lifetime_remaining"))
                 remaining = Clamp(value, 0, 100);
             else if (name.Contains("media_wearout_indicator") || name.Contains("percentage_used"))
                 remaining = 100 - Clamp(value, 0, 100);
@@ -170,7 +173,9 @@ namespace A2ZSysIns
                 return;
 
             attr.SemanticsValidated = true;
-            attr.Interpretation = "Validated device endurance/life indicator; interpreted from the attribute name rather than the numeric ID alone.";
+            attr.Interpretation = attr.NormalizedValue.HasValue
+                ? "Validated device endurance/life indicator; percentage taken from the normalized SMART value because the raw field is vendor-specific."
+                : "Validated device endurance/life indicator; interpreted from the raw field because no normalized SMART value was available.";
             drive.RemainingLifePercent = remaining;
             drive.LifeMeaning = "Validated SMART endurance/life indicator (vendor/device semantics); this is not an overall health percentage.";
             drive.EnduranceUsedPercent = 100 - remaining;
@@ -180,10 +185,13 @@ namespace A2ZSysIns
 
         private static void InterpretUsedEnduranceAttribute(DriveInfoRecord drive, SmartAttributeRecord attr)
         {
-            if (!attr.RawValue.HasValue) return;
-            var used = Clamp(attr.RawValue.Value, 0, 100);
+            if (!attr.RawValue.HasValue && !attr.NormalizedValue.HasValue) return;
+            var source = attr.NormalizedValue.HasValue ? attr.NormalizedValue.Value : attr.RawValue.Value;
+            var used = Clamp(source, 0, 100);
             attr.SemanticsValidated = true;
-            attr.Interpretation = "Validated percentage of endurance used; converted to remaining endurance for presentation.";
+            attr.Interpretation = attr.NormalizedValue.HasValue
+                ? "Validated percentage of endurance used; normalized SMART value used for the percentage, raw field retained as evidence."
+                : "Validated percentage of endurance used; raw value used because no normalized SMART value was available.";
             drive.EnduranceUsedPercent = used;
             drive.RemainingLifePercent = 100 - used;
             drive.LifeMeaning = "Validated device endurance-used indicator; this is not an overall health percentage.";
