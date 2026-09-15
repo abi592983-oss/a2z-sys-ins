@@ -38,7 +38,8 @@ namespace A2ZSysIns
                 await Step(48, "Reviewing core Windows events and recorded details...", () => EvidenceEngine.Events(_report));
                 await Step(62, "Collecting advanced correlated evidence...", () => AdvancedDiagnostics.Collect(_report));
                 await Step(78, "Sampling available hardware sensors...", CollectSensorsWithPawnIoFallback);
-                await Step(92, "Calculating evidence-based results...", () => { StorageInterpretationService.Interpret(_report); StorageHealthAssessmentService.Record(_report); Scoring.Calculate(_report); SmartInterpretation.NormalizeReport(_report); AdvancedAssessment.Apply(_report); SmartInterpretation.RefreshSummary(_report); });
+                await Step(86, "Checking Windows system and file integrity...", () => WindowsIntegrityService.Collect(_report));
+                await Step(94, "Building customer health conclusions...", () => { Pass12NormalizationService.Apply(_report); StorageInterpretationService.Interpret(_report); StorageHealthAssessmentService.Record(_report); Scoring.Calculate(_report); SmartInterpretation.NormalizeReport(_report); AdvancedAssessment.Apply(_report); SmartInterpretation.RefreshSummary(_report); CustomerHealthAssessmentService.Apply(_report); });
                 _report.CompletedAt = DateTime.Now; Progress.Value = 100; ProgressText.Text = "Inspection completed."; StatusText.Text = "Inspection " + _report.InspectionId + " completed";
                 EvidenceEngine.Log(_report, "Session completed", "Completed at " + _report.CompletedAt.ToString("o") + "; measurements=" + _report.Measurements.Count + "; findings=" + _report.Findings.Count);
                 OverallText.Text = "Assessment: " + _report.OverallStatus; InspectionIdText.Text = "Inspection " + _report.InspectionId; ResultsList.ItemsSource = _report.Scores; ReportViewer.Document = DarkReportPreviewService.Build(_report); Tabs.SelectedIndex = 2;
@@ -96,7 +97,7 @@ namespace A2ZSysIns
                 var sampleProgress = new Progress<CpuStressSample>(sample => { if (sample.ElapsedMilliseconds - _lastGraphRenderMs >= 100) { _lastGraphRenderMs = sample.ElapsedMilliseconds; RenderStressGraphs(); } });
                 var result = await CpuStressTestService.RunAsync(_report, _stressCancellation.Token, progress, sampleProgress);
                 RenderStressGraphs();
-                StorageInterpretationService.Interpret(_report); StorageHealthAssessmentService.Record(_report); Scoring.Calculate(_report); SmartInterpretation.NormalizeReport(_report); AdvancedAssessment.Apply(_report); SmartInterpretation.RefreshSummary(_report);
+                Pass12NormalizationService.Apply(_report); StorageInterpretationService.Interpret(_report); StorageHealthAssessmentService.Record(_report); Scoring.Calculate(_report); SmartInterpretation.NormalizeReport(_report); AdvancedAssessment.Apply(_report); SmartInterpretation.RefreshSummary(_report); CustomerHealthAssessmentService.Apply(_report);
                 ResultsList.ItemsSource = null; ResultsList.ItemsSource = _report.Scores; OverallText.Text = "CPU test: " + result.Status + " — " + result.StopReason; ReportViewer.Document = DarkReportPreviewService.Build(_report);
             }
             catch (Exception ex) { EvidenceEngine.Log(_report, "CPU stress UI error", ex.ToString()); MessageBox.Show(this, ex.GetBaseException().Message, "CPU stress test", MessageBoxButton.OK, MessageBoxImage.Error); }
