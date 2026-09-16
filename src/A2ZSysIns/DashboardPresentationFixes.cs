@@ -31,6 +31,8 @@ namespace A2ZSysIns
         {
             if (_report == null) return;
 
+            ApplyResponsiveDeviceProfile();
+
             var health = _report.CustomerHealth ?? new CustomerHealthSummary();
             OverallScoreText.Text = _report.OverallScore.HasValue ? _report.OverallScore.Value.ToString() : "—";
             var scoreParent = OverallScoreText.Parent as StackPanel;
@@ -112,6 +114,94 @@ namespace A2ZSysIns
                 });
                 DashboardStressGraph.Children.Add(panel);
             }
+        }
+
+        private void ApplyResponsiveDeviceProfile()
+        {
+            var placeholder = FindVisualText(this, "PC");
+            if (placeholder == null) return;
+
+            var host = placeholder.Parent as Border;
+            if (host == null) return;
+
+            var cardGrid = host.Child as Grid;
+            if (cardGrid != null && cardGrid.ColumnDefinitions.Count >= 2)
+            {
+                cardGrid.ColumnDefinitions[0].Width = new GridLength(0.42, GridUnitType.Star);
+                cardGrid.ColumnDefinitions[1].Width = new GridLength(0.58, GridUnitType.Star);
+            }
+
+            var profile = DetectDeviceProfile();
+            var icon = BuildDeviceIcon(profile);
+            host.Child = icon;
+            host.HorizontalContentAlignment = HorizontalAlignment.Center;
+            host.VerticalContentAlignment = VerticalAlignment.Center;
+            host.Padding = new Thickness(18);
+        }
+
+        private string DetectDeviceProfile()
+        {
+            var system = _report == null ? null : _report.System;
+            var model = system != null && system.ContainsKey("Model") ? system["Model"] : "";
+            var manufacturer = system != null && system.ContainsKey("Manufacturer") ? system["Manufacturer"] : "";
+            var text = (manufacturer + " " + model).ToLowerInvariant();
+
+            if (text.Contains("tablet") || text.Contains("surface pro") || text.Contains("ipad") || text.Contains("tab "))
+                return "tablet";
+            if (text.Contains("notebook") || text.Contains("laptop") || text.Contains("portable") || text.Contains("pavilion") || text.Contains("thinkpad") || text.Contains("latitude") || text.Contains("inspiron") || text.Contains("elitebook") || text.Contains("probook") || text.Contains("vivobook") || text.Contains("ideapad") || text.Contains("zenbook"))
+                return "laptop";
+            if (text.Contains("all-in-one") || text.Contains("all in one") || text.Contains("aio"))
+                return "aio";
+            return "desktop";
+        }
+
+        private FrameworkElement BuildDeviceIcon(string profile)
+        {
+            var viewBox = new Viewbox { Stretch = Stretch.Uniform, Width = 150, Height = 120 };
+            var canvas = new Canvas { Width = 150, Height = 120 };
+            var stroke = (Brush)FindResource("Blue");
+            var muted = (Brush)FindResource("Border");
+
+            if (profile == "laptop")
+            {
+                canvas.Children.Add(new Rectangle { Width = 92, Height = 58, RadiusX = 5, RadiusY = 5, Stroke = stroke, StrokeThickness = 5, Fill = (Brush)FindResource("Panel"), Canvas.Left = 29, Canvas.Top = 12 });
+                canvas.Children.Add(new Rectangle { Width = 76, Height = 42, Fill = (Brush)FindResource("Bg"), Canvas.Left = 37, Canvas.Top = 20 });
+                canvas.Children.Add(new Polygon { Points = new PointCollection { new Point(18, 79), new Point(132, 79), new Point(143, 91), new Point(7, 91) }, Fill = muted, Stroke = stroke, StrokeThickness = 4 });
+                canvas.Children.Add(new Rectangle { Width = 28, Height = 3, Fill = stroke, Canvas.Left = 61, Canvas.Top = 83 });
+            }
+            else if (profile == "tablet")
+            {
+                canvas.Children.Add(new Rectangle { Width = 82, Height = 104, RadiusX = 9, RadiusY = 9, Stroke = stroke, StrokeThickness = 5, Fill = (Brush)FindResource("Panel"), Canvas.Left = 34, Canvas.Top = 6 });
+                canvas.Children.Add(new Rectangle { Width = 66, Height = 82, Fill = (Brush)FindResource("Bg"), Canvas.Left = 42, Canvas.Top = 14 });
+                canvas.Children.Add(new Ellipse { Width = 6, Height = 6, Fill = stroke, Canvas.Left = 72, Canvas.Top = 96 });
+            }
+            else
+            {
+                canvas.Children.Add(new Rectangle { Width = 92, Height = 68, RadiusX = 4, RadiusY = 4, Stroke = stroke, StrokeThickness = 5, Fill = (Brush)FindResource("Panel"), Canvas.Left = 29, Canvas.Top = 6 });
+                canvas.Children.Add(new Rectangle { Width = 76, Height = 52, Fill = (Brush)FindResource("Bg"), Canvas.Left = 37, Canvas.Top = 14 });
+                canvas.Children.Add(new Line { X1 = 75, Y1 = 74, X2 = 75, Y2 = 89, Stroke = stroke, StrokeThickness = 5 });
+                canvas.Children.Add(new Polygon { Points = new PointCollection { new Point(48, 91), new Point(102, 91), new Point(111, 97), new Point(39, 97) }, Fill = muted, Stroke = stroke, StrokeThickness = 4 });
+                if (profile == "aio")
+                    canvas.Children.Add(new Ellipse { Width = 7, Height = 7, Fill = stroke, Canvas.Left = 71.5, Canvas.Top = 61 });
+            }
+
+            viewBox.Child = canvas;
+            return viewBox;
+        }
+
+        private static TextBlock FindVisualText(DependencyObject root, string text)
+        {
+            if (root == null) return null;
+            var count = VisualTreeHelper.GetChildrenCount(root);
+            for (var i = 0; i < count; i++)
+            {
+                var child = VisualTreeHelper.GetChild(root, i);
+                var block = child as TextBlock;
+                if (block != null && string.Equals(block.Text, text, StringComparison.Ordinal)) return block;
+                var nested = FindVisualText(child, text);
+                if (nested != null) return nested;
+            }
+            return null;
         }
 
         private double? CpuTemperatureForDashboard()
