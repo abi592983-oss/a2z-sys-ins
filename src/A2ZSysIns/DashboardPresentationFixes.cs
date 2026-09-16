@@ -30,6 +30,18 @@ namespace A2ZSysIns
         {
             if (_report == null) return;
 
+            var health = _report.CustomerHealth ?? new CustomerHealthSummary();
+            OverallScoreText.Text = _report.OverallScore.HasValue ? _report.OverallScore.Value.ToString() : "—";
+            var scoreParent = OverallScoreText.Parent as StackPanel;
+            if (scoreParent != null && scoreParent.Children.Count > 1 && scoreParent.Children[1] is TextBlock scoreSuffix)
+                scoreSuffix.Text = _report.OverallScore.HasValue ? "/ 100" : "STATUS";
+            var scoreGrid = scoreParent == null ? null : scoreParent.Parent as Grid;
+            if (scoreGrid != null)
+            {
+                var rings = scoreGrid.Children.OfType<Ellipse>().ToList();
+                if (rings.Count > 1) rings[1].Stroke = StatusBrush(health.OverallStatus);
+            }
+
             var drive = _report.Drives == null ? null : _report.Drives.FirstOrDefault();
             if (drive == null)
                 StorageValueText.Text = "Not detected";
