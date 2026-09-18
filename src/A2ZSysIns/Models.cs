@@ -48,6 +48,20 @@ namespace A2ZSysIns
         [DataMember] public List<string> PriorityActions = new List<string>();
         [DataMember] public List<string> Limitations = new List<string>();
         [DataMember] public CustomerHealthSummary CustomerHealth = new CustomerHealthSummary();
+        [DataMember] public string TestSelectionMode = "Automatic";
+        [DataMember] public List<TestPlanRecord> TestPlan = new List<TestPlanRecord>();
+    }
+
+    [DataContract]
+    public sealed class TestPlanRecord
+    {
+        [DataMember] public string Test;
+        [DataMember] public string Decision;
+        [DataMember] public string Reason;
+        [DataMember] public bool ManualOverride;
+        [DataMember] public DateTime DecidedAtUtc = DateTime.UtcNow;
+        [DataMember] public double? DurationSeconds;
+        [DataMember] public string Result;
     }
 
     [DataContract]
