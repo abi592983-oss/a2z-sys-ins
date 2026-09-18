@@ -10,20 +10,29 @@ namespace A2ZSysIns
     {
         public static void Collect(InspectionReport report)
         {
+            Collect(report, true, true, true, null);
+        }
+
+        public static void Collect(InspectionReport report, bool runSfc, bool runDism, bool runChkdsk, Action<string> activity)
+        {
             if (report == null) return;
             report.Measurements.RemoveAll(x => x != null && (x.Target ?? "").StartsWith("Windows integrity", StringComparison.OrdinalIgnoreCase));
-            RunCheck(report, "System files", "sfc.exe", "/verifyonly", 180000, ClassifySfc);
-            RunCheck(report, "Component store", "DISM.exe", "/Online /Cleanup-Image /CheckHealth", 90000, ClassifyDism);
+            if (runSfc) RunCheck(report, "System files", "sfc.exe", "/verifyonly", 180000, ClassifySfc, activity); else EvidenceEngine.Record(report, "Windows integrity / System files", "SFC", "Skipped", "Skipped by inspection test plan.");
+            if (runDism) RunCheck(report, "Component store", "DISM.exe", "/Online /Cleanup-Image /CheckHealth", 90000, ClassifyDism, activity); else EvidenceEngine.Record(report, "Windows integrity / Component store", "DISM", "Skipped", "Skipped by inspection test plan.");
             var system = Environment.GetEnvironmentVariable("SystemDrive");
-            if (!string.IsNullOrWhiteSpace(system)) RunCheck(report, "File system " + system, "chkdsk.exe", system + " /scan", 120000, ClassifyChkdsk);
+            if (!string.IsNullOrWhiteSpace(system) && runChkdsk) RunCheck(report, "File system " + system, "chkdsk.exe", system + " /scan", 120000, ClassifyChkdsk, activity);
+            else if (!runChkdsk) EvidenceEngine.Record(report, "Windows integrity / File system", "CHKDSK", "Skipped", "Skipped by inspection test plan.");
             else EvidenceEngine.Record(report, "Windows integrity / File system", "CHKDSK", "Unavailable", "System drive could not be identified.");
         }
 
-        private static void RunCheck(InspectionReport report, string target, string exe, string args, int timeoutMs, Func<string, Tuple<string, string>> classifier)
+        private static void RunCheck(InspectionReport report, string target, string exe, string args, int timeoutMs, Func<string, Tuple<string, string>> classifier, Action<string> activity)
         {
             try
             {
-                var result = Run(report, exe, args, timeoutMs);
+                activity?.Invoke("Starting " + exe + " " + args);
+                var sw = Stopwatch.StartNew();
+                var result = Run(report, exe, args, timeoutMs, activity);
+                activity?.Invoke(exe + " completed in " + Math.Round(sw.Elapsed.TotalSeconds, 1) + "s");
                 var c = classifier(result.Item1 + "\n" + result.Item2);
                 EvidenceEngine.Record(report, "Windows integrity / " + target, exe, c.Item1, c.Item2, Trim(result.Item1 + "\n" + result.Item2));
             }
@@ -58,11 +67,13 @@ namespace A2ZSysIns
             return Tuple.Create("Unavailable", "CHKDSK completed without a recognized definitive result.");
         }
 
-        private static Tuple<string, string> Run(InspectionReport report, string exe, string args, int timeoutMs)
+        private static Tuple<string, string> Run(InspectionReport report, string exe, string args, int timeoutMs, Action<string> activity)
         {
             EvidenceEngine.Log(report, "Windows integrity request", exe + " " + args);
             using (var p = new Process { StartInfo = new ProcessStartInfo { FileName = exe, Arguments = args, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true } })
             {
+                p.OutputDataReceived += (s, e) => { if (!string.IsNullOrWhiteSpace(e.Data)) activity?.Invoke("[" + Path.GetFileNameWithoutExtension(exe).ToUpperInvariant() + "] " + e.Data); };
+                p.ErrorDataReceived += (s, e) => { if (!string.IsNullOrWhiteSpace(e.Data)) activity?.Invoke("[" + Path.GetFileNameWithoutExtension(exe).ToUpperInvariant() + ":ERR] " + e.Data); };
                 p.Start();
                 var stdout = p.StandardOutput.ReadToEndAsync();
                 var stderr = p.StandardError.ReadToEndAsync();
