@@ -15,6 +15,8 @@ namespace A2ZSysIns
         private InspectionReport _report;
         private CancellationTokenSource _stressCancellation;
         private int _lastGraphRenderMs = -1000;
+        private InspectionProgressTracker _progressTracker;
+        private System.Windows.Threading.DispatcherTimer _progressUiTimer;
 
         public MainWindow()
         {
@@ -25,6 +27,8 @@ namespace A2ZSysIns
             Height = Math.Min(760, Math.Max(MinHeight, area.Height - 24));
             Tabs.SelectedIndex = 0;
             ReportViewer.Document = BuildReportPlaceholder();
+            _progressUiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+            _progressUiTimer.Tick += (s, e) => RefreshAdaptiveProgress();
         }
 
         private async void Start_Click(object sender, RoutedEventArgs e)
@@ -42,18 +46,29 @@ namespace A2ZSysIns
             }
             _report = new InspectionReport { InspectionId = DateTime.Now.ToString("yyyyMMdd-HHmmss"), StartedAt = DateTime.Now, CustomerReference = CustomerBox.Text.Trim(), JobNumber = JobBox.Text.Trim(), Technician = TechnicianBox.Text.Trim(), ReportedProblem = ProblemBox.Text.Trim() };
             EvidenceEngine.Begin(_report); Tabs.SelectedIndex = 1; StartButton.IsEnabled = false;
+            _progressTracker = new InspectionProgressTracker(); ActivityTerminal.Clear(); AppendActivity("ENGINE", "Inspection started. Building evidence plan."); _progressUiTimer.Start();
             try
             {
-                await Step(8, "Collecting Windows and hardware information...", () => Collectors.CollectSystem(_report));
+                await Step("System", "Collecting Windows and hardware information...", () => Collectors.CollectSystem(_report));
                 PortableSessionLog.SetDeviceIdentity(_report.System.ContainsKey("Manufacturer") ? _report.System["Manufacturer"] : null, _report.System.ContainsKey("Model") ? _report.System["Model"] : null, _report.System.ContainsKey("Serial number") ? _report.System["Serial number"] : null);
                 EvidenceEngine.Log(_report, "Portable diagnostic location", PortableSessionLog.PathName);
-                await Step(18, "Measuring resource usage with fallback methods...", () => EvidenceEngine.Resources(_report));
-                await Step(32, "Detecting and scanning all physical storage devices...", () => { StorageAcquisitionService.Collect(_report); foreach (var drive in _report.Drives.Where(x => x.SmartAttributes.Count == 0 && x.NvmeHealth == null && x.SmartDataSource != "smartctl JSON")) CrystalDiskInfoFallbackService.TryCollect(_report, drive); });
-                await Step(48, "Reviewing core Windows events and recorded details...", () => EvidenceEngine.Events(_report));
-                await Step(62, "Collecting advanced correlated evidence...", () => AdvancedDiagnostics.Collect(_report));
-                await Step(78, "Sampling available hardware sensors...", CollectSensorsWithPawnIoFallback);
-                await Step(86, "Checking Windows system and file integrity...", () => WindowsIntegrityService.Collect(_report));
-                await Step(94, "Building customer health conclusions...", () => { Pass12NormalizationService.Apply(_report); StorageInterpretationService.Interpret(_report); StorageHealthAssessmentService.Record(_report); Scoring.Calculate(_report); SmartInterpretation.NormalizeReport(_report); AdvancedAssessment.Apply(_report); SmartInterpretation.RefreshSummary(_report); CustomerHealthAssessmentService.Apply(_report); });
+
+                AppendActivity("ENGINE", "Running independent resource and event collectors in parallel.");
+                await Task.WhenAll(
+                    Step("Resources", "Measuring resource usage with fallback methods...", () => EvidenceEngine.Resources(_report)),
+                    Step("Events", "Reviewing core Windows events and recorded details...", () => EvidenceEngine.Events(_report)));
+
+                await Step("Storage", "Detecting and scanning all physical storage devices...", () => { StorageAcquisitionService.Collect(_report); foreach (var drive in _report.Drives.Where(x => x.SmartAttributes.Count == 0 && x.NvmeHealth == null && x.SmartDataSource != "smartctl JSON")) CrystalDiskInfoFallbackService.TryCollect(_report, drive); });
+                await Step("Advanced", "Collecting advanced correlated evidence...", () => AdvancedDiagnostics.Collect(_report));
+                await Step("Sensors", "Sampling available hardware sensors...", CollectSensorsWithPawnIoFallback);
+
+                bool runSfc, runDism, runChkdsk;
+                BuildIntegrityPlan(out runSfc, out runDism, out runChkdsk);
+                if (runSfc || runDism || runChkdsk)
+                    await Step("Integrity", "Checking selected Windows system and file integrity...", () => WindowsIntegrityService.Collect(_report, runSfc, runDism, runChkdsk, x => AppendActivity("INTEGRITY", x)));
+                else AppendActivity("PLAN", "Windows integrity checks skipped by plan; reason is recorded in JSON.");
+
+                await Step("Assessment", "Building customer health conclusions...", () => { Pass12NormalizationService.Apply(_report); StorageInterpretationService.Interpret(_report); StorageHealthAssessmentService.Record(_report); Scoring.Calculate(_report); SmartInterpretation.NormalizeReport(_report); AdvancedAssessment.Apply(_report); SmartInterpretation.RefreshSummary(_report); CustomerHealthAssessmentService.Apply(_report); });
                 _report.CompletedAt = DateTime.Now; Progress.Value = 100; ProgressText.Text = "Inspection completed."; StatusText.Text = "Inspection " + _report.InspectionId + " completed";
                 EvidenceEngine.Log(_report, "Session completed", "Completed at " + _report.CompletedAt.ToString("o") + "; measurements=" + _report.Measurements.Count + "; findings=" + _report.Findings.Count);
                 OverallText.Text = "Assessment: " + _report.OverallStatus; InspectionIdText.Text = "Inspection " + _report.InspectionId; ResultsList.ItemsSource = _report.Scores; ReportViewer.Document = DarkReportPreviewService.Build(_report);
@@ -66,7 +81,7 @@ namespace A2ZSysIns
                 MessageBox.Show(this, "The inspection could not complete. Temporary Inspector-owned resources will be cleaned where applicable; see the retained diagnostic log.\n\n" + ex.GetBaseException().Message, "A2Z System Inspector", MessageBoxButton.OK, MessageBoxImage.Error);
                 StatusText.Text = "Inspection stopped";
             }
-            finally { if (_report != null) DriverAccessManager.CleanupOwnedPawnIo(_report, "inspection finished"); StartButton.IsEnabled = true; }
+            finally { _progressUiTimer.Stop(); RefreshAdaptiveProgress(); if (_report != null) DriverAccessManager.CleanupOwnedPawnIo(_report, "inspection finished"); StartButton.IsEnabled = true; }
         }
 
         private FlowDocument BuildReportPlaceholder()
@@ -93,11 +108,78 @@ namespace A2ZSysIns
             EvidenceEngine.FinishSensors(_report); DriverAccessManager.CleanupOwnedPawnIo(_report, "sensor collection finished");
         }
 
-        private async Task Step(int value, string text, Action action)
+        private async Task Step(string stage, string text, Action action)
         {
-            Progress.Value = value; ProgressText.Text = text; StatusText.Text = text; var timer = Stopwatch.StartNew(); EvidenceEngine.Log(_report, "Step started", text);
-            try { await Task.Run(action); EvidenceEngine.Log(_report, "Step completed", text + " Duration=" + timer.Elapsed); }
-            catch (Exception ex) { EvidenceEngine.Log(_report, "Step failed", text + " Duration=" + timer.Elapsed + "\n" + ex); throw; }
+            _progressTracker.Begin(stage); ProgressText.Text = text; StatusText.Text = text; AppendActivity(stage.ToUpperInvariant(), text);
+            var timer = Stopwatch.StartNew(); EvidenceEngine.Log(_report, "Step started", stage + " | " + text);
+            try
+            {
+                await Task.Run(action);
+                _progressTracker.Complete(stage);
+                AppendActivity(stage.ToUpperInvariant(), "Completed in " + Math.Round(timer.Elapsed.TotalSeconds, 1) + "s");
+                EvidenceEngine.Log(_report, "Step completed", stage + " | " + text + " Duration=" + timer.Elapsed);
+            }
+            catch (Exception ex)
+            {
+                AppendActivity(stage.ToUpperInvariant(), "FAILED: " + ex.GetBaseException().Message);
+                EvidenceEngine.Log(_report, "Step failed", stage + " | " + text + " Duration=" + timer.Elapsed + "\n" + ex); throw;
+            }
+        }
+
+        private void AppendActivity(string source, string message)
+        {
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (_progressTracker != null) _progressTracker.Activity();
+                var line = DateTime.Now.ToString("HH:mm:ss") + "  [" + source + "] " + message;
+                ActivityTerminal.AppendText(line + Environment.NewLine);
+                ActivityTerminal.ScrollToEnd();
+            }));
+        }
+
+        private void RefreshAdaptiveProgress()
+        {
+            if (_progressTracker == null) return;
+            var s = _progressTracker.Snapshot();
+            Progress.Value = s.Percent;
+            if (s.IsWaiting)
+                EtaText.Text = "Elapsed " + InspectionProgressTracker.Format(s.Elapsed) + "  •  waiting " + InspectionProgressTracker.Format(s.WaitingFor) + " — ETA paused";
+            else
+                EtaText.Text = "Elapsed " + InspectionProgressTracker.Format(s.Elapsed) + "  •  est. remaining ~" + (s.Remaining.HasValue ? InspectionProgressTracker.Format(s.Remaining.Value) : "estimating…");
+        }
+
+        private void BuildIntegrityPlan(out bool runSfc, out bool runDism, out bool runChkdsk)
+        {
+            var manual = TestModeBox.SelectedIndex == 1;
+            _report.TestSelectionMode = manual ? "Manual override" : "Automatic";
+            if (manual)
+            {
+                runSfc = SfcCheck.IsChecked == true; runDism = DismCheck.IsChecked == true; runChkdsk = ChkdskCheck.IsChecked == true;
+                RecordPlan("SFC /verifyonly", runSfc, "Technician manual override.", true);
+                RecordPlan("DISM CheckHealth", runDism, "Technician manual override.", true);
+                RecordPlan("CHKDSK /scan", runChkdsk, "Technician manual override.", true);
+                return;
+            }
+
+            var eventText = string.Join(" ", _report.Events.Select(x => (x.Summary ?? "") + " " + (x.Cause ?? "") + " " + x.EventId));
+            var findingText = string.Join(" ", _report.Findings.Select(x => (x.Title ?? "") + " " + (x.Explanation ?? "") + " " + (x.Evidence ?? "")));
+            var evidence = (eventText + " " + findingText + " " + (_report.ReportedProblem ?? "")).ToLowerInvariant();
+            var windowsConcern = evidence.Contains("corrupt") || evidence.Contains("system file") || evidence.Contains("servicing") || evidence.Contains("component store") || evidence.Contains("0xc000") || evidence.Contains("sfc") || evidence.Contains("dism");
+            var fileSystemConcern = evidence.Contains("ntfs") || evidence.Contains("disk") || evidence.Contains("file system") || evidence.Contains("bad block") || evidence.Contains("storage") || _report.Drives.Any(x => x.SmartPassed == false);
+
+            runSfc = windowsConcern;
+            runDism = windowsConcern;
+            runChkdsk = fileSystemConcern;
+            RecordPlan("SFC /verifyonly", runSfc, windowsConcern ? "Automatic evidence trigger: Windows integrity concern detected." : "No Windows-integrity trigger detected; skipped to reduce inspection time.", false);
+            RecordPlan("DISM CheckHealth", runDism, windowsConcern ? "Automatic evidence trigger: Windows servicing/component concern detected." : "No servicing/component-store trigger detected; skipped to reduce inspection time.", false);
+            RecordPlan("CHKDSK /scan", runChkdsk, fileSystemConcern ? "Automatic evidence trigger: storage/file-system concern detected." : "No file-system/storage trigger detected; skipped to reduce inspection time.", false);
+            AppendActivity("PLAN", "Automatic plan: SFC=" + (runSfc ? "RUN" : "SKIP") + ", DISM=" + (runDism ? "RUN" : "SKIP") + ", CHKDSK=" + (runChkdsk ? "RUN" : "SKIP"));
+        }
+
+        private void RecordPlan(string test, bool run, string reason, bool manual)
+        {
+            _report.TestPlan.Add(new TestPlanRecord { Test = test, Decision = run ? "Run" : "Skipped", Reason = reason, ManualOverride = manual });
+            EvidenceEngine.Log(_report, "Test plan decision", test + "=" + (run ? "RUN" : "SKIP") + "; manual=" + manual + "; reason=" + reason);
         }
 
         private void ViewReport_Click(object sender, RoutedEventArgs e) { if (Ready()) { ReportViewer.Document = DarkReportPreviewService.Build(_report); RenderStressGraphs(); Tabs.SelectedIndex = 3; } }
