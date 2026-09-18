@@ -134,8 +134,6 @@ namespace A2ZSysIns
             var profile = DetectDeviceProfile();
             var icon = BuildDeviceIcon(profile);
             host.Child = icon;
-            host.HorizontalContentAlignment = HorizontalAlignment.Center;
-            host.VerticalContentAlignment = VerticalAlignment.Center;
             host.Padding = new Thickness(18);
         }
 
@@ -164,29 +162,36 @@ namespace A2ZSysIns
 
             if (profile == "laptop")
             {
-                canvas.Children.Add(new Rectangle { Width = 92, Height = 58, RadiusX = 5, RadiusY = 5, Stroke = stroke, StrokeThickness = 5, Fill = (Brush)FindResource("Panel"), Canvas.Left = 29, Canvas.Top = 12 });
-                canvas.Children.Add(new Rectangle { Width = 76, Height = 42, Fill = (Brush)FindResource("Bg"), Canvas.Left = 37, Canvas.Top = 20 });
+                AddAt(canvas, new Rectangle { Width = 92, Height = 58, RadiusX = 5, RadiusY = 5, Stroke = stroke, StrokeThickness = 5, Fill = (Brush)FindResource("Panel") }, 29, 12);
+                AddAt(canvas, new Rectangle { Width = 76, Height = 42, Fill = (Brush)FindResource("Bg") }, 37, 20);
                 canvas.Children.Add(new Polygon { Points = new PointCollection { new Point(18, 79), new Point(132, 79), new Point(143, 91), new Point(7, 91) }, Fill = muted, Stroke = stroke, StrokeThickness = 4 });
-                canvas.Children.Add(new Rectangle { Width = 28, Height = 3, Fill = stroke, Canvas.Left = 61, Canvas.Top = 83 });
+                AddAt(canvas, new Rectangle { Width = 28, Height = 3, Fill = stroke }, 61, 83);
             }
             else if (profile == "tablet")
             {
-                canvas.Children.Add(new Rectangle { Width = 82, Height = 104, RadiusX = 9, RadiusY = 9, Stroke = stroke, StrokeThickness = 5, Fill = (Brush)FindResource("Panel"), Canvas.Left = 34, Canvas.Top = 6 });
-                canvas.Children.Add(new Rectangle { Width = 66, Height = 82, Fill = (Brush)FindResource("Bg"), Canvas.Left = 42, Canvas.Top = 14 });
-                canvas.Children.Add(new Ellipse { Width = 6, Height = 6, Fill = stroke, Canvas.Left = 72, Canvas.Top = 96 });
+                AddAt(canvas, new Rectangle { Width = 82, Height = 104, RadiusX = 9, RadiusY = 9, Stroke = stroke, StrokeThickness = 5, Fill = (Brush)FindResource("Panel") }, 34, 6);
+                AddAt(canvas, new Rectangle { Width = 66, Height = 82, Fill = (Brush)FindResource("Bg") }, 42, 14);
+                AddAt(canvas, new Ellipse { Width = 6, Height = 6, Fill = stroke }, 72, 96);
             }
             else
             {
-                canvas.Children.Add(new Rectangle { Width = 92, Height = 68, RadiusX = 4, RadiusY = 4, Stroke = stroke, StrokeThickness = 5, Fill = (Brush)FindResource("Panel"), Canvas.Left = 29, Canvas.Top = 6 });
-                canvas.Children.Add(new Rectangle { Width = 76, Height = 52, Fill = (Brush)FindResource("Bg"), Canvas.Left = 37, Canvas.Top = 14 });
+                AddAt(canvas, new Rectangle { Width = 92, Height = 68, RadiusX = 4, RadiusY = 4, Stroke = stroke, StrokeThickness = 5, Fill = (Brush)FindResource("Panel") }, 29, 6);
+                AddAt(canvas, new Rectangle { Width = 76, Height = 52, Fill = (Brush)FindResource("Bg") }, 37, 14);
                 canvas.Children.Add(new Line { X1 = 75, Y1 = 74, X2 = 75, Y2 = 89, Stroke = stroke, StrokeThickness = 5 });
                 canvas.Children.Add(new Polygon { Points = new PointCollection { new Point(48, 91), new Point(102, 91), new Point(111, 97), new Point(39, 97) }, Fill = muted, Stroke = stroke, StrokeThickness = 4 });
                 if (profile == "aio")
-                    canvas.Children.Add(new Ellipse { Width = 7, Height = 7, Fill = stroke, Canvas.Left = 71.5, Canvas.Top = 61 });
+                    AddAt(canvas, new Ellipse { Width = 7, Height = 7, Fill = stroke }, 71.5, 61);
             }
 
             viewBox.Child = canvas;
             return viewBox;
+        }
+
+        private static void AddAt(Canvas canvas, UIElement element, double left, double top)
+        {
+            Canvas.SetLeft(element, left);
+            Canvas.SetTop(element, top);
+            canvas.Children.Add(element);
         }
 
         private static TextBlock FindVisualText(DependencyObject root, string text)
