@@ -3,6 +3,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace A2ZSysIns
 {
@@ -10,23 +12,29 @@ namespace A2ZSysIns
     {
         public static void Collect(InspectionReport report)
         {
+            CollectAsync(report, CancellationToken.None).GetAwaiter().GetResult();
+        }
+
+        public static async Task CollectAsync(InspectionReport report, CancellationToken cancellation)
+        {
             if (report == null) return;
             report.Measurements.RemoveAll(x => x != null && (x.Target ?? "").StartsWith("Windows integrity", StringComparison.OrdinalIgnoreCase));
-            RunCheck(report, "System files", "sfc.exe", "/verifyonly", 180000, ClassifySfc);
-            RunCheck(report, "Component store", "DISM.exe", "/Online /Cleanup-Image /CheckHealth", 90000, ClassifyDism);
+            await RunCheckAsync(report, "System files", "sfc.exe", "/verifyonly", 180000, ClassifySfc, cancellation).ConfigureAwait(false);
+            await RunCheckAsync(report, "Component store", "DISM.exe", "/Online /Cleanup-Image /CheckHealth", 90000, ClassifyDism, cancellation).ConfigureAwait(false);
             var system = Environment.GetEnvironmentVariable("SystemDrive");
-            if (!string.IsNullOrWhiteSpace(system)) RunCheck(report, "File system " + system, "chkdsk.exe", system + " /scan", 120000, ClassifyChkdsk);
+            if (!string.IsNullOrWhiteSpace(system)) await RunCheckAsync(report, "File system " + system, "chkdsk.exe", system + " /scan", 120000, ClassifyChkdsk, cancellation).ConfigureAwait(false);
             else EvidenceEngine.Record(report, "Windows integrity / File system", "CHKDSK", "Unavailable", "System drive could not be identified.");
         }
 
-        private static void RunCheck(InspectionReport report, string target, string exe, string args, int timeoutMs, Func<string, Tuple<string, string>> classifier)
+        private static async Task RunCheckAsync(InspectionReport report, string target, string exe, string args, int timeoutMs, Func<string, Tuple<string, string>> classifier, CancellationToken cancellation)
         {
             try
             {
-                var result = Run(report, exe, args, timeoutMs);
-                var c = classifier(result.Item1 + "\n" + result.Item2);
-                EvidenceEngine.Record(report, "Windows integrity / " + target, exe, c.Item1, c.Item2, Trim(result.Item1 + "\n" + result.Item2));
+                var result = await RunAsync(report, exe, args, timeoutMs, cancellation).ConfigureAwait(false);
+                var c = classifier(result.StandardOutput + "\n" + result.StandardError);
+                EvidenceEngine.Record(report, "Windows integrity / " + target, exe, c.Item1, c.Item2, Trim(result.StandardOutput + "\n" + result.StandardError));
             }
+            catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
                 EvidenceEngine.Record(report, "Windows integrity / " + target, exe, "Unavailable", ex.GetBaseException().Message);
@@ -58,23 +66,13 @@ namespace A2ZSysIns
             return Tuple.Create("Unavailable", "CHKDSK completed without a recognized definitive result.");
         }
 
-        private static Tuple<string, string> Run(InspectionReport report, string exe, string args, int timeoutMs)
+        private static async Task<ProcessExecutionResult> RunAsync(InspectionReport report, string exe, string args, int timeoutMs, CancellationToken cancellation)
         {
             EvidenceEngine.Log(report, "Windows integrity request", exe + " " + args);
-            using (var p = new Process { StartInfo = new ProcessStartInfo { FileName = exe, Arguments = args, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true } })
-            {
-                p.Start();
-                var stdout = p.StandardOutput.ReadToEndAsync();
-                var stderr = p.StandardError.ReadToEndAsync();
-                if (!p.WaitForExit(timeoutMs))
-                {
-                    try { p.Kill(); } catch { }
-                    throw new TimeoutException(exe + " timed out after " + (timeoutMs / 1000) + " seconds.");
-                }
-                stdout.Wait(5000); stderr.Wait(5000);
-                EvidenceEngine.Log(report, "Windows integrity response", exe + " exit=" + p.ExitCode);
-                return Tuple.Create(stdout.Result ?? "", stderr.Result ?? "");
-            }
+            var result = await ProcessExecutionService.RunAsync(new ProcessExecutionRequest { FileName = exe, Arguments = args, TimeoutMilliseconds = timeoutMs,
+                Output = (stream, line) => EvidenceEngine.Log(report, "Windows integrity " + stream, line) }, cancellation).ConfigureAwait(false);
+            EvidenceEngine.Log(report, "Windows integrity response", exe + " exit=" + result.ExitCode);
+            return result;
         }
 
         private static bool Contains(string text, string value) => (text ?? "").IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0;

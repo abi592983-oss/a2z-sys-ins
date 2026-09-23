@@ -255,6 +255,20 @@ The next work should prioritize evidence correctness discovered on physical mach
 
 ## 12. Development history entries
 
+### 2026-09-23 — Production MVP foundation — cancellable process lifecycle
+
+**What changed:** Added one structured process runner with process identity, start/finish/last-output timestamps, streamed stdout/stderr, exit code, timeout and cancellation handling. SFC, DISM and CHKDSK now use it with the active inspection cancellation token; smartctl uses the same runner for its existing synchronous acquisition path.
+
+**Type:** Added / modified.
+
+**Why:** Process execution was previously duplicated across collectors and integrity checks, and long-running integrity commands could not observe an inspection cancellation request.
+
+**Files affected:** `ProcessExecutionService.cs`, `WindowsIntegrityService.cs`, `EvidenceEngine.cs`, cancellation tests.
+
+**Validation:** Isolated-output Release build passed with 0 warnings/errors; tests passed 30/30; Pass 13 seeded synthetic lab passed 60/60.
+
+**Remaining:** Process-tree termination is limited to the direct Inspector-owned process on .NET Framework 4.8; CrystalDiskInfo and PawnIO cleanup still have legacy process wrappers to migrate. Direct smartctl collection does not yet receive the UI cancellation token. The native UI bridge was unable to attach to the elevated Technician Console, so a manual cancel-during-collection run remains required on a controllable physical machine.
+
 ### 2026-09-23 — Production MVP foundation — fault-isolated stages
 
 **What changed:** Added an inspection stage contract and runner, a recorded preflight stage, explicit inspection completion states, cancellation entry point, indeterminate progress, and mode selection. Individual collector exceptions now become an `ERROR` stage and preserved limitation rather than immediately terminating later independent stages.

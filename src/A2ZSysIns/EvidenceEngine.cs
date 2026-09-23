@@ -9,6 +9,7 @@ using System.Management;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Text;
+using System.Threading;
 using System.Xml.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -61,24 +62,14 @@ namespace A2ZSysIns
         public static string Run(InspectionReport r, string exe, string arguments)
         {
             Log(r, "Process request", Path.GetFileName(exe) + " " + arguments);
-            using (var p = new Process { StartInfo = new ProcessStartInfo(exe, arguments) {
-                UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true } })
+            var result = ProcessExecutionService.RunAsync(new ProcessExecutionRequest
             {
-                p.Start();
-                var stdout = p.StandardOutput.ReadToEndAsync();
-                var stderr = p.StandardError.ReadToEndAsync();
-                if (!p.WaitForExit(25000))
-                {
-                    try { p.Kill(); } catch { }
-                    Log(r, "Process timeout", "Stopped this collector process after 25 seconds.");
-                    throw new TimeoutException("Collector timed out after 25 seconds.");
-                }
-                if (!System.Threading.Tasks.Task.WaitAll(new System.Threading.Tasks.Task[] { stdout, stderr }, 5000))
-                    throw new TimeoutException("Collector output did not finish.");
-                Log(r, "Process response", "Exit=" + p.ExitCode + "\nstdout:\n" + stdout.Result + "\nstderr:\n" + stderr.Result);
-                // smartctl uses a bitmask exit code: a nonzero code can contain useful health data.
-                return stdout.Result;
-            }
+                FileName = exe, Arguments = arguments, TimeoutMilliseconds = 25000,
+                Output = (stream, line) => Log(r, "Process " + stream, line)
+            }, CancellationToken.None).GetAwaiter().GetResult();
+            Log(r, "Process response", "Exit=" + result.ExitCode + "\nstdout:\n" + result.StandardOutput + "\nstderr:\n" + result.StandardError);
+            // smartctl uses a bitmask exit code: a nonzero code can contain useful health data.
+            return result.StandardOutput;
         }
 
         public static void Begin(InspectionReport r)
