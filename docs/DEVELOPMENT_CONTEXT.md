@@ -255,6 +255,20 @@ The next work should prioritize evidence correctness discovered on physical mach
 
 ## 12. Development history entries
 
+### 2026-09-23 — Production MVP foundation — fault-isolated stages
+
+**What changed:** Added an inspection stage contract and runner, a recorded preflight stage, explicit inspection completion states, cancellation entry point, indeterminate progress, and mode selection. Individual collector exceptions now become an `ERROR` stage and preserved limitation rather than immediately terminating later independent stages.
+
+**Type:** Added / modified.
+
+**Why:** The original fixed serial UI pipeline rethrew any stage failure, which could discard the technician workflow despite usable evidence from other collectors.
+
+**Files affected:** `InspectionStageRunner.cs`, `Models.cs`, `MainWindow.xaml`, `MainWindow.xaml.cs`, regression tests.
+
+**Validation:** Isolated-output Release build passed with 0 warnings/errors; tests passed 28/28; Pass 13 seeded synthetic lab passed 60/60.
+
+**Remaining:** External utilities do not yet accept a cancellation token after launch; cancellation prevents subsequent stages but a currently running external command can run until its existing timeout. Full manual per-test selection, packaged clean-machine validation, and physical-machine acceptance remain open.
+
 ### 2026-09-23 — Validation wiring — Pass 13 standalone runner
 
 **What changed:** Corrected the standalone lab runner namespace, added its project to the solution, and added the deterministic Pass 13 run to the pull-request validation workflow.

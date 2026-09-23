@@ -12,6 +12,7 @@ namespace A2ZSysIns
     {
         private InspectionReport _report;
         private CancellationTokenSource _stressCancellation;
+        private CancellationTokenSource _inspectionCancellation;
         private int _lastGraphRenderMs = -1000;
 
         public MainWindow()
@@ -26,26 +27,30 @@ namespace A2ZSysIns
         private async void Start_Click(object sender, RoutedEventArgs e)
         {
             if (string.IsNullOrWhiteSpace(TechnicianBox.Text)) { MessageBox.Show(this, "Enter the technician name before starting.", "A2Z System Inspector", MessageBoxButton.OK, MessageBoxImage.Information); return; }
-            _report = new InspectionReport { InspectionId = DateTime.Now.ToString("yyyyMMdd-HHmmss"), StartedAt = DateTime.Now, CustomerReference = CustomerBox.Text.Trim(), JobNumber = JobBox.Text.Trim(), Technician = TechnicianBox.Text.Trim(), ReportedProblem = ProblemBox.Text.Trim() };
-            EvidenceEngine.Begin(_report); Tabs.SelectedIndex = 1; StartButton.IsEnabled = false;
+            _report = new InspectionReport { InspectionId = DateTime.Now.ToString("yyyyMMdd-HHmmss"), StartedAt = DateTime.Now, CustomerReference = CustomerBox.Text.Trim(), JobNumber = JobBox.Text.Trim(), Technician = TechnicianBox.Text.Trim(), ReportedProblem = ProblemBox.Text.Trim(), InspectionMode = ((System.Windows.Controls.ComboBoxItem)ModeBox.SelectedItem).Content.ToString() };
+            _inspectionCancellation = new CancellationTokenSource(); EvidenceEngine.Begin(_report); Tabs.SelectedIndex = 1; StartButton.IsEnabled = false; CancelInspectionButton.IsEnabled = true;
             try
             {
-                await Step(8, "Collecting Windows and hardware information...", () => Collectors.CollectSystem(_report));
+                await Stage("Preflight", () => InspectionStageRunner.Preflight(_report));
+                await Stage("System information", () => Collectors.CollectSystem(_report));
                 PortableSessionLog.SetDeviceIdentity(_report.System.ContainsKey("Manufacturer") ? _report.System["Manufacturer"] : null, _report.System.ContainsKey("Model") ? _report.System["Model"] : null, _report.System.ContainsKey("Serial number") ? _report.System["Serial number"] : null);
                 EvidenceEngine.Log(_report, "Portable diagnostic location", PortableSessionLog.PathName);
-                await Step(18, "Measuring resource usage with fallback methods...", () => EvidenceEngine.Resources(_report));
-                await Step(32, "Detecting and scanning all physical storage devices...", () => { StorageAcquisitionService.Collect(_report); foreach (var drive in _report.Drives.Where(x => x.SmartAttributes.Count == 0 && x.NvmeHealth == null && x.SmartDataSource != "smartctl JSON")) CrystalDiskInfoFallbackService.TryCollect(_report, drive); });
-                await Step(48, "Reviewing core Windows events and recorded details...", () => EvidenceEngine.Events(_report));
-                await Step(62, "Collecting advanced correlated evidence...", () => AdvancedDiagnostics.Collect(_report));
-                await Step(78, "Sampling available hardware sensors...", CollectSensorsWithPawnIoFallback);
-                await Step(86, "Checking Windows system and file integrity...", () => WindowsIntegrityService.Collect(_report));
-                await Step(94, "Building customer health conclusions...", () => { Pass12NormalizationService.Apply(_report); StorageInterpretationService.Interpret(_report); StorageHealthAssessmentService.Record(_report); Scoring.Calculate(_report); SmartInterpretation.NormalizeReport(_report); AdvancedAssessment.Apply(_report); SmartInterpretation.RefreshSummary(_report); CustomerHealthAssessmentService.Apply(_report); });
-                _report.CompletedAt = DateTime.Now; Progress.Value = 100; ProgressText.Text = "Inspection completed."; StatusText.Text = "Inspection " + _report.InspectionId + " completed";
+                await Stage("Resource usage", () => EvidenceEngine.Resources(_report));
+                await Stage("Storage", () => { StorageAcquisitionService.Collect(_report); foreach (var drive in _report.Drives.Where(x => x.SmartAttributes.Count == 0 && x.NvmeHealth == null && x.SmartDataSource != "smartctl JSON")) CrystalDiskInfoFallbackService.TryCollect(_report, drive); });
+                await Stage("Windows events", () => EvidenceEngine.Events(_report));
+                await Stage("Advanced diagnostics", () => AdvancedDiagnostics.Collect(_report));
+                await Stage("Sensors", CollectSensorsWithPawnIoFallback);
+                if (_report.InspectionMode == "MANUAL") _report.Stages.Add(new InspectionStageResult { Name = "Windows integrity", Status = "SKIPPED", Reason = "Manual mode: technician did not select integrity checks." });
+                else if (_report.InspectionMode == "AUTOMATIC" && !_report.IsAdministrator) _report.Stages.Add(new InspectionStageResult { Name = "Windows integrity", Status = "SKIPPED", Reason = "Automatic mode: skipped because the Inspector is not elevated." });
+                else await Stage("Windows integrity", () => WindowsIntegrityService.Collect(_report));
+                await Stage("Analysis", () => { Pass12NormalizationService.Apply(_report); StorageInterpretationService.Interpret(_report); StorageHealthAssessmentService.Record(_report); Scoring.Calculate(_report); SmartInterpretation.NormalizeReport(_report); AdvancedAssessment.Apply(_report); SmartInterpretation.RefreshSummary(_report); CustomerHealthAssessmentService.Apply(_report); });
+                _report.CompletedAt = DateTime.Now; _report.InspectionState = _report.Stages.Any(x => x.Status == "ERROR" || x.Status == "WARNING" || x.Status == "SKIPPED") ? "COMPLETE_WITH_LIMITATIONS" : "COMPLETE"; Progress.Value = 100; ProgressText.Text = "Inspection " + _report.InspectionState + "."; StatusText.Text = "Inspection " + _report.InspectionId + " " + _report.InspectionState;
                 EvidenceEngine.Log(_report, "Session completed", "Completed at " + _report.CompletedAt.ToString("o") + "; measurements=" + _report.Measurements.Count + "; findings=" + _report.Findings.Count);
                 OverallText.Text = "Assessment: " + _report.OverallStatus; InspectionIdText.Text = "Inspection " + _report.InspectionId; ResultsList.ItemsSource = _report.Scores; ReportViewer.Document = DarkReportPreviewService.Build(_report); Tabs.SelectedIndex = 2;
             }
-            catch (Exception ex) { if (_report != null) EvidenceEngine.Log(_report, "Unhandled inspection error", ex.ToString()); MessageBox.Show(this, "The inspection could not complete. Temporary Inspector-owned resources will be cleaned where applicable; see the retained diagnostic log.\n\n" + ex.GetBaseException().Message, "A2Z System Inspector", MessageBoxButton.OK, MessageBoxImage.Error); StatusText.Text = "Inspection stopped"; }
-            finally { if (_report != null) DriverAccessManager.CleanupOwnedPawnIo(_report, "inspection finished"); StartButton.IsEnabled = true; }
+            catch (OperationCanceledException) { _report.CompletedAt = DateTime.Now; _report.InspectionState = "CANCELLED"; _report.Limitations.Add("Inspection cancelled by technician; collected evidence is partial."); EvidenceEngine.Log(_report, "Inspection cancelled", "Technician requested cancellation."); StatusText.Text = "Inspection CANCELLED"; }
+            catch (Exception ex) { if (_report != null) { _report.InspectionState = "FAILED_FATAL"; EvidenceEngine.Log(_report, "Unhandled inspection error", ex.ToString()); } MessageBox.Show(this, "The inspection could not complete. Temporary Inspector-owned resources will be cleaned where applicable; see the retained diagnostic log.\n\n" + ex.GetBaseException().Message, "A2Z System Inspector", MessageBoxButton.OK, MessageBoxImage.Error); StatusText.Text = "Inspection FAILED_FATAL"; }
+            finally { if (_report != null) DriverAccessManager.CleanupOwnedPawnIo(_report, "inspection finished"); _inspectionCancellation.Dispose(); _inspectionCancellation = null; StartButton.IsEnabled = true; CancelInspectionButton.IsEnabled = false; }
         }
 
         private void CollectSensorsWithPawnIoFallback()
@@ -63,11 +68,12 @@ namespace A2ZSysIns
             EvidenceEngine.FinishSensors(_report); DriverAccessManager.CleanupOwnedPawnIo(_report, "sensor collection finished");
         }
 
-        private async Task Step(int value, string text, Action action)
+        private async Task Stage(string name, Action action)
         {
-            Progress.Value = value; ProgressText.Text = text; StatusText.Text = text; var timer = Stopwatch.StartNew(); EvidenceEngine.Log(_report, "Step started", text);
-            try { await Task.Run(action); EvidenceEngine.Log(_report, "Step completed", text + " Duration=" + timer.Elapsed); }
-            catch (Exception ex) { EvidenceEngine.Log(_report, "Step failed", text + " Duration=" + timer.Elapsed + "\n" + ex); throw; }
+            Progress.IsIndeterminate = true; ProgressText.Text = name + " is running (INDETERMINATE)..."; StatusText.Text = name + " is running";
+            var progress = new Progress<InspectionStageResult>(s => { ProgressText.Text = s.Name + " — " + s.Status + ": " + s.Reason; StatusText.Text = s.Name + " " + s.Status; ResultsList.ItemsSource = null; ResultsList.ItemsSource = _report.Stages; });
+            await InspectionStageRunner.RunAsync(_report, name, action, _inspectionCancellation.Token, progress);
+            Progress.IsIndeterminate = false;
         }
 
         private void ViewReport_Click(object sender, RoutedEventArgs e) { if (Ready()) { ReportViewer.Document = DarkReportPreviewService.Build(_report); RenderStressGraphs(); Tabs.SelectedIndex = 3; } }
@@ -112,6 +118,7 @@ namespace A2ZSysIns
         }
 
         private void CancelStress_Click(object sender, RoutedEventArgs e) { if (_stressCancellation == null) return; EvidenceEngine.Log(_report, "CPU stress cancellation requested", "Technician pressed Stop stress test."); _stressCancellation.Cancel(); }
+        private void CancelInspection_Click(object sender, RoutedEventArgs e) { if (_inspectionCancellation == null) return; EvidenceEngine.Log(_report, "Inspection cancellation requested", "Technician pressed Cancel inspection."); _inspectionCancellation.Cancel(); }
         private void New_Click(object sender, RoutedEventArgs e) { if (_stressCancellation != null) return; _report = null; ResultsList.ItemsSource = null; ReportViewer.Document = null; StressUtilizationGraph.Children.Clear(); StressThermalGraph.Children.Clear(); Progress.Value = 0; ProgressText.Text = "Ready"; Tabs.SelectedIndex = 0; StatusText.Text = "Ready"; }
         private bool Ready() { if (_report != null) return true; MessageBox.Show(this, "Complete an inspection first."); return false; }
     }
