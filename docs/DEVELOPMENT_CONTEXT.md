@@ -255,6 +255,20 @@ The next work should prioritize evidence correctness discovered on physical mach
 
 ## 12. Development history entries
 
+### 2026-09-23 — Validation wiring — Pass 13 standalone runner
+
+**What changed:** Corrected the standalone lab runner namespace, added its project to the solution, and added the deterministic Pass 13 run to the pull-request validation workflow.
+
+**Type:** Fixed / modified.
+
+**Why:** The runner namespace shadowed the production `SyntheticInspectionLab` type and could not compile. Because its project was omitted from the solution and CI workflow, the documented Pass 13 validation was neither built nor run by normal validation.
+
+**Files affected:** `tests/SyntheticInspectionLab/Program.cs`, `A2ZSysIns.sln`, `.github/workflows/pass8-validation.yml`.
+
+**Validation:** Clean `Release|x64` solution build passed with 0 warnings/errors; unit suite passed 26/26; seeded Pass 13 run passed 60/60 generated machines across 12 scenario families.
+
+**Remaining:** This validates synthetic interpretation only; physical-machine validation remains required.
+
 ### 2026-09-15 — Pass 11 — Real-time graph honesty correction
 
 **What changed:** Stress/report graphs were changed to use real `CapturedAt` timestamps. A cadence summary was added to the report graph.

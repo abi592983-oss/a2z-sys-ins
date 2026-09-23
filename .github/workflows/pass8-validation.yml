@@ -28,3 +28,6 @@ jobs:
 
       - name: Run synthetic validation tests
         run: dotnet test tests/A2ZSysIns.Tests/A2ZSysIns.Tests.csproj --configuration Release --no-build --no-restore -p:Platform=x64
+
+      - name: Run Pass 13 synthetic inspection lab
+        run: dotnet run --project tests/SyntheticInspectionLab/SyntheticInspectionLab.csproj --configuration Release --no-build --no-restore -p:Platform=x64 -- 20260915 5
