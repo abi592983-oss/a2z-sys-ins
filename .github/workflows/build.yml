@@ -1,7 +1,7 @@
 name: Windows build
 on:
   push:
-    branches: [ main ]
+    branches: [ main, codex/pass13-validation-wiring ]
   pull_request:
 jobs:
   build:
@@ -16,6 +16,10 @@ jobs:
         uses: microsoft/setup-msbuild@v2
       - name: Build
         run: msbuild A2ZSysIns.sln /p:Configuration=Release /p:Platform=x64 /m
+      - name: Test
+        run: dotnet test tests/A2ZSysIns.Tests/A2ZSysIns.Tests.csproj -c Release -p:Platform=x64 --no-restore
+      - name: Pass 13 synthetic lab
+        run: dotnet run --project tests/SyntheticInspectionLab/SyntheticInspectionLab.csproj -c Release -p:Platform=x64 --no-restore
       - name: Bundle official storage tools, PawnIO, and notices
         shell: pwsh
         run: |
