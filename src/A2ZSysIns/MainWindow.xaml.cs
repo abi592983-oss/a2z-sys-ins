@@ -46,7 +46,7 @@ namespace A2ZSysIns
                 await Stage("Analysis", () => { Pass12NormalizationService.Apply(_report); StorageInterpretationService.Interpret(_report); StorageHealthAssessmentService.Record(_report); Scoring.Calculate(_report); SmartInterpretation.NormalizeReport(_report); AdvancedAssessment.Apply(_report); SmartInterpretation.RefreshSummary(_report); CustomerHealthAssessmentService.Apply(_report); });
                 _report.CompletedAt = DateTime.Now; _report.InspectionState = _report.Stages.Any(x => x.Status == "ERROR" || x.Status == "WARNING" || x.Status == "SKIPPED") ? "COMPLETE_WITH_LIMITATIONS" : "COMPLETE"; Progress.Value = 100; ProgressText.Text = "Inspection " + _report.InspectionState + "."; StatusText.Text = "Inspection " + _report.InspectionId + " " + _report.InspectionState;
                 EvidenceEngine.Log(_report, "Session completed", "Completed at " + _report.CompletedAt.ToString("o") + "; measurements=" + _report.Measurements.Count + "; findings=" + _report.Findings.Count);
-                OverallText.Text = "Assessment: " + _report.OverallStatus; InspectionIdText.Text = "Inspection " + _report.InspectionId; ResultsList.ItemsSource = _report.Scores; ReportViewer.Document = DarkReportPreviewService.Build(_report); Tabs.SelectedIndex = 2;
+                OverallText.Text = "Assessment: " + _report.OverallStatus; InspectionIdText.Text = "Inspection " + _report.InspectionId; ResultsList.ItemsSource = _report.Scores; ReportViewer.Document = DarkReportPreviewService.Build(_report); Tabs.SelectedIndex = 1;
             }
             catch (OperationCanceledException) { _report.CompletedAt = DateTime.Now; _report.InspectionState = "CANCELLED"; _report.Limitations.Add("Inspection cancelled by technician; collected evidence is partial."); EvidenceEngine.Log(_report, "Inspection cancelled", "Technician requested cancellation."); StatusText.Text = "Inspection CANCELLED"; }
             catch (Exception ex) { if (_report != null) { _report.InspectionState = "FAILED_FATAL"; EvidenceEngine.Log(_report, "Unhandled inspection error", ex.ToString()); } MessageBox.Show(this, "The inspection could not complete. Temporary Inspector-owned resources will be cleaned where applicable; see the retained diagnostic log.\n\n" + ex.GetBaseException().Message, "A2Z System Inspector", MessageBoxButton.OK, MessageBoxImage.Error); StatusText.Text = "Inspection FAILED_FATAL"; }
@@ -70,10 +70,23 @@ namespace A2ZSysIns
 
         private async Task Stage(string name, Action action)
         {
-            Progress.IsIndeterminate = true; ProgressText.Text = name + " is running (INDETERMINATE)..."; StatusText.Text = name + " is running";
+            Progress.IsIndeterminate = true; ProgressText.Text = name + " is running (INDETERMINATE)..."; StatusText.Text = name + " is running"; AppendConsole(name.ToUpperInvariant(), "Started — progress indeterminate");
             var progress = new Progress<InspectionStageResult>(s => { ProgressText.Text = s.Name + " — " + s.Status + ": " + s.Reason; StatusText.Text = s.Name + " " + s.Status; ResultsList.ItemsSource = null; ResultsList.ItemsSource = _report.Stages; });
             await InspectionStageRunner.RunAsync(_report, name, action, _inspectionCancellation.Token, progress);
             Progress.IsIndeterminate = false;
+        }
+
+        private void AppendConsole(string category, string message)
+        {
+            if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(new Action(() => AppendConsole(category, message))); return; }
+            if (LiveConsoleBox == null) return;
+            LiveConsoleBox.AppendText(DateTime.Now.ToString("HH:mm:ss") + "  [" + category + "]  " + message + Environment.NewLine);
+            if (LiveConsoleBox.LineCount > 300)
+            {
+                var cut = LiveConsoleBox.GetCharacterIndexFromLineIndex(50);
+                if (cut > 0) LiveConsoleBox.Text = LiveConsoleBox.Text.Substring(cut);
+            }
+            LiveConsoleBox.ScrollToEnd();
         }
 
         private void ViewReport_Click(object sender, RoutedEventArgs e) { if (Ready()) { ReportViewer.Document = DarkReportPreviewService.Build(_report); RenderStressGraphs(); Tabs.SelectedIndex = 3; } }
@@ -118,7 +131,7 @@ namespace A2ZSysIns
         }
 
         private void CancelStress_Click(object sender, RoutedEventArgs e) { if (_stressCancellation == null) return; EvidenceEngine.Log(_report, "CPU stress cancellation requested", "Technician pressed Stop stress test."); _stressCancellation.Cancel(); }
-        private void CancelInspection_Click(object sender, RoutedEventArgs e) { if (_inspectionCancellation == null) return; EvidenceEngine.Log(_report, "Inspection cancellation requested", "Technician pressed Cancel inspection."); _inspectionCancellation.Cancel(); }
+        private void CancelInspection_Click(object sender, RoutedEventArgs e) { if (_inspectionCancellation == null) return; EvidenceEngine.Log(_report, "Inspection cancellation requested", "Technician pressed Cancel inspection."); AppendConsole("USER", "Cancellation requested"); CancelInspectionButton.IsEnabled = false; ProgressText.Text = "Cancellation requested — finishing current cancellation/cleanup..."; _inspectionCancellation.Cancel(); }
         private void New_Click(object sender, RoutedEventArgs e) { if (_stressCancellation != null) return; _report = null; ResultsList.ItemsSource = null; ReportViewer.Document = null; StressUtilizationGraph.Children.Clear(); StressThermalGraph.Children.Clear(); Progress.Value = 0; ProgressText.Text = "Ready"; Tabs.SelectedIndex = 0; StatusText.Text = "Ready"; }
         private bool Ready() { if (_report != null) return true; MessageBox.Show(this, "Complete an inspection first."); return false; }
     }
