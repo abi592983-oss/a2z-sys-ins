@@ -16,6 +16,15 @@ jobs:
         uses: microsoft/setup-msbuild@v2
       - name: Build
         run: msbuild A2ZSysIns.sln /p:Configuration=Release /p:Platform=x64 /m
+      - name: Run automated regression tests
+        run: dotnet test tests/A2ZSysIns.Tests/A2ZSysIns.Tests.csproj --configuration Release --no-restore --logger "trx;LogFileName=results.trx"
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: A2Z-Inspector-Test-Results
+          path: tests/A2ZSysIns.Tests/TestResults/**/*.trx
+          if-no-files-found: warn
       - name: Bundle official storage tools, PawnIO, and notices
         shell: pwsh
         run: |
