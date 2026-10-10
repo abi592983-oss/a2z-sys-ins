@@ -17,7 +17,14 @@ jobs:
       - name: Build
         run: msbuild A2ZSysIns.sln /p:Configuration=Release /p:Platform=x64 /m
       - name: Test
-        run: dotnet test tests/A2ZSysIns.Tests/A2ZSysIns.Tests.csproj -c Release -p:Platform=x64 --no-restore
+        run: dotnet test tests/A2ZSysIns.Tests/A2ZSysIns.Tests.csproj -c Release -p:Platform=x64 --no-restore --logger "trx;LogFileName=results.trx"
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: A2Z-Inspector-Test-Results
+          path: tests/A2ZSysIns.Tests/TestResults/**/*.trx
+          if-no-files-found: warn
       - name: Pass 13 synthetic lab
         run: dotnet run --project tests/SyntheticInspectionLab/SyntheticInspectionLab.csproj -c Release -p:Platform=x64 --no-restore
       - name: Upload deterministic report validation artifact
