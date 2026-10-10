@@ -34,7 +34,7 @@ namespace A2ZSysIns.Tests
             catch (OperationCanceledException) { }
 
             Assert.AreEqual(1, report.Stages.Count);
-            Assert.AreEqual("SKIPPED", report.Stages[0].Status);
+            Assert.AreEqual("CANCELLED", report.Stages[0].Status);
             Assert.IsFalse(string.Equals(report.Stages[0].Status, "PASS", StringComparison.Ordinal));
         }
     }

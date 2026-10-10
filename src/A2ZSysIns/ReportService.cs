@@ -1,8 +1,8 @@
 using Microsoft.Win32;
+using Newtonsoft.Json;
 using System;
 using System.IO;
 using System.Linq;
-using System.Runtime.Serialization.Json;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
@@ -186,7 +186,13 @@ namespace A2ZSysIns
             var dialog = new SaveFileDialog { Filter = "JSON evidence (*.json)|*.json", FileName = "A2Z-Inspection-" + report.InspectionId + ".json" };
             if (dialog.ShowDialog(owner) != true) return;
             EvidenceEngine.Log(report, "JSON export", dialog.FileName);
-            using (var fs = File.Create(dialog.FileName)) new DataContractJsonSerializer(typeof(InspectionReport)).WriteObject(fs, report);
+            File.WriteAllText(dialog.FileName, SerializeJson(report), new UTF8Encoding(false));
+        }
+
+        internal static string SerializeJson(InspectionReport report)
+        {
+            if (report == null) throw new ArgumentNullException("report");
+            return JsonConvert.SerializeObject(report, Formatting.Indented);
         }
 
         public static void SaveText(InspectionReport r, Window owner)

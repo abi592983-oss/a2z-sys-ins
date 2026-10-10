@@ -24,7 +24,7 @@ namespace A2ZSysIns
             }
             catch (OperationCanceledException)
             {
-                stage.Status = "SKIPPED"; stage.Reason = "Cancelled before stage completion.";
+                stage.Status = "CANCELLED"; stage.Reason = "Cancelled before stage completion; no health conclusion was produced for this stage.";
                 throw;
             }
             catch (Exception ex)
