@@ -89,7 +89,7 @@ namespace A2ZSysIns
             LiveConsoleBox.ScrollToEnd();
         }
 
-        private void ViewReport_Click(object sender, RoutedEventArgs e) { if (Ready()) { ReportViewer.Document = DarkReportPreviewService.Build(_report); RenderStressGraphs(); Tabs.SelectedIndex = 3; } }
+        private void ViewReport_Click(object sender, RoutedEventArgs e) { if (Ready()) { ReportViewer.Document = DarkReportPreviewService.Build(_report); RenderStressGraphs(); Tabs.SelectedIndex = 2; } }
         private void ExportJson_Click(object sender, RoutedEventArgs e) { if (Ready()) ReportService.SaveJson(_report, this); }
         private void ExportText_Click(object sender, RoutedEventArgs e) { if (Ready()) ReportService.SaveText(_report, this); }
         private void ExportLog_Click(object sender, RoutedEventArgs e) { if (Ready()) ReportService.SaveDiagnosticLog(_report, this); }
@@ -107,7 +107,7 @@ namespace A2ZSysIns
             if (!Ready() || _stressCancellation != null) return;
             var answer = MessageBox.Show(this, "This optional test deliberately loads every logical CPU for up to 60 seconds. It ramps through 40%, 70% and 100% target load and stops at 90 °C or if CPU temperature monitoring is lost.\n\nTelemetry is sampled at up to 20 times per second and sensor update cadence is learned separately. Do not run it on a visibly damaged, unstable or poorly cooled computer. Continue?", "CPU stress-test safety confirmation", MessageBoxButton.YesNo, MessageBoxImage.Warning);
             if (answer != MessageBoxResult.Yes) return;
-            _stressCancellation = new CancellationTokenSource(); _lastGraphRenderMs = -1000; RunStressButton.IsEnabled = false; CancelStressButton.IsEnabled = true; StartButton.IsEnabled = false; Tabs.SelectedIndex = 3;
+            _stressCancellation = new CancellationTokenSource(); _lastGraphRenderMs = -1000; RunStressButton.IsEnabled = false; CancelStressButton.IsEnabled = true; StartButton.IsEnabled = false; Tabs.SelectedIndex = 2;
             try
             {
                 var current = DriverAccessManager.DetectPawnIo();
@@ -132,6 +132,8 @@ namespace A2ZSysIns
 
         private void CancelStress_Click(object sender, RoutedEventArgs e) { if (_stressCancellation == null) return; EvidenceEngine.Log(_report, "CPU stress cancellation requested", "Technician pressed Stop stress test."); _stressCancellation.Cancel(); }
         private void CancelInspection_Click(object sender, RoutedEventArgs e) { if (_inspectionCancellation == null) return; EvidenceEngine.Log(_report, "Inspection cancellation requested", "Technician pressed Cancel inspection."); AppendConsole("USER", "Cancellation requested"); CancelInspectionButton.IsEnabled = false; ProgressText.Text = "Cancellation requested — finishing current cancellation/cleanup..."; _inspectionCancellation.Cancel(); }
+        private void Dashboard_Click(object sender, RoutedEventArgs e) { Tabs.SelectedIndex = 0; }
+        private void InspectionNav_Click(object sender, RoutedEventArgs e) { Tabs.SelectedIndex = 1; }
         private void New_Click(object sender, RoutedEventArgs e) { if (_stressCancellation != null) return; _report = null; ResultsList.ItemsSource = null; ReportViewer.Document = null; StressUtilizationGraph.Children.Clear(); StressThermalGraph.Children.Clear(); Progress.Value = 0; ProgressText.Text = "Ready"; Tabs.SelectedIndex = 0; StatusText.Text = "Ready"; }
         private bool Ready() { if (_report != null) return true; MessageBox.Show(this, "Complete an inspection first."); return false; }
     }
