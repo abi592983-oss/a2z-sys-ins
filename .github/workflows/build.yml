@@ -1,7 +1,7 @@
 name: Windows build
 on:
   push:
-    branches: [ main ]
+    branches: [ main, codex/pass13-validation-wiring, codex/dark-console-ui ]
   pull_request:
 jobs:
   build:
@@ -25,6 +25,13 @@ jobs:
           name: A2Z-Inspector-Test-Results
           path: tests/A2ZSysIns.Tests/TestResults/**/*.trx
           if-no-files-found: warn
+      - name: Pass 13 synthetic lab
+        run: dotnet run --project tests/SyntheticInspectionLab/SyntheticInspectionLab.csproj -c Release -p:Platform=x64 --no-restore
+      - name: Upload deterministic report validation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: A2Z-MVP-Validation-Report
+          path: tests/A2ZSysIns.Tests/bin/x64/Release/net48/output/pdf/A2Z-MVP-Validation-Report.pdf
       - name: Bundle official storage tools, PawnIO, and notices
         shell: pwsh
         run: |

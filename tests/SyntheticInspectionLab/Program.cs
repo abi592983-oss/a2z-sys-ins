@@ -1,7 +1,10 @@
 using System;
 using System.Linq;
 
-namespace A2ZSysIns.SyntheticInspectionLab
+// Keep the executable namespace distinct from the production
+// A2ZSysIns.SyntheticInspectionLab type.  Otherwise C# resolves the name
+// below to this namespace rather than to the referenced production type.
+namespace A2ZSysIns.SyntheticInspectionLabRunner
 {
     internal static class Program
     {

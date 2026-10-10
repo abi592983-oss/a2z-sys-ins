@@ -25,9 +25,21 @@ namespace A2ZSysIns
             if (dialog.ShowDialog(owner) != true) return null;
             var path = dialog.FileName;
             EvidenceEngine.Log(report, "PDF export requested", path);
-            await BuildPdfOnStaAsync(report, path);
+            await GeneratePdfForValidationAsync(report, path, TimeSpan.FromSeconds(45));
             EvidenceEngine.Log(report, "PDF export completed", path);
             return path;
+        }
+
+        // Keeps the UI responsive and gives both production export and CI a bounded,
+        // deterministic PDF-generation path. The background writer is deliberately
+        // isolated from the WPF dispatcher because PDFsharp does not require it.
+        internal static async Task GeneratePdfForValidationAsync(InspectionReport report, string path, TimeSpan timeout)
+        {
+            if (timeout <= TimeSpan.Zero) throw new ArgumentOutOfRangeException("timeout");
+            var build = BuildPdfOnStaAsync(report, path);
+            if (await Task.WhenAny(build, Task.Delay(timeout)).ConfigureAwait(false) != build)
+                throw new TimeoutException("PDF generation did not complete within " + timeout.TotalSeconds.ToString("0") + " seconds.");
+            await build.ConfigureAwait(false);
         }
 
         private static Task BuildPdfOnStaAsync(InspectionReport report, string path)
@@ -232,13 +244,20 @@ namespace A2ZSysIns
 
             public void ResultLine(string left, string state, string reason)
             {
-                var lines = Wrap(Safe(reason), _body, Width - 220);
-                var h = Math.Max(22, lines.Count * 12.5 + 8);
+                const double leftWidth = 145;
+                const double stateWidth = 135;
+                const double gap = 8;
+                var reasonWidth = Width - leftWidth - stateWidth - gap;
+                var leftLines = Wrap(Safe(left), _bold, leftWidth - 10);
+                var stateLines = Wrap(Safe(state), _body, stateWidth - 10);
+                var reasonLines = Wrap(Safe(reason), _body, reasonWidth - 10);
+                var lineCount = Math.Max(leftLines.Count, Math.Max(stateLines.Count, reasonLines.Count));
+                var h = Math.Max(22, lineCount * 12.5 + 8);
                 Ensure(h + 2);
                 _gfx.DrawRectangle(new XPen(XColor.FromArgb(220, 225, 230), 0.6), Left, _y, Width, h);
-                _gfx.DrawString(Safe(left), _bold, _text, new XRect(Left + 5, _y + 5, 120, h - 5), XStringFormats.TopLeft);
-                _gfx.DrawString(Safe(state), _body, _navy, new XRect(Left + 128, _y + 5, 86, h - 5), XStringFormats.TopLeft);
-                for (var i = 0; i < lines.Count; i++) _gfx.DrawString(lines[i], _body, _text, Left + 218, _y + 14 + i * 12.5);
+                for (var i = 0; i < leftLines.Count; i++) _gfx.DrawString(leftLines[i], _bold, _text, Left + 5, _y + 14 + i * 12.5);
+                for (var i = 0; i < stateLines.Count; i++) _gfx.DrawString(stateLines[i], _body, _navy, Left + leftWidth + 2, _y + 14 + i * 12.5);
+                for (var i = 0; i < reasonLines.Count; i++) _gfx.DrawString(reasonLines[i], _body, _text, Left + leftWidth + stateWidth + gap, _y + 14 + i * 12.5);
                 _y += h + 2;
             }
 

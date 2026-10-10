@@ -48,6 +48,26 @@ namespace A2ZSysIns
         [DataMember] public List<string> PriorityActions = new List<string>();
         [DataMember] public List<string> Limitations = new List<string>();
         [DataMember] public CustomerHealthSummary CustomerHealth = new CustomerHealthSummary();
+        [DataMember] public string InspectionState = "INCOMPLETE";
+        [DataMember] public string InspectionMode = "AUTOMATIC";
+        [DataMember] public List<InspectionStageResult> Stages = new List<InspectionStageResult>();
+    }
+
+    [DataContract]
+    public sealed class InspectionStageResult
+    {
+        [DataMember] public string Name;
+        // Allows the existing evidence grid to display stage results without a UI-only adapter.
+        public string Category { get { return Name; } }
+        [DataMember] public string Status = "SKIPPED";
+        [DataMember] public DateTime StartedAt;
+        [DataMember] public DateTime FinishedAt;
+        [DataMember] public long DurationMilliseconds;
+        [DataMember] public string Reason;
+        [DataMember] public string Error;
+        [DataMember] public string FallbackUsed;
+        [DataMember] public bool SubsequentStagesMayContinue = true;
+        [DataMember] public int EvidenceCount;
     }
 
     [DataContract]
