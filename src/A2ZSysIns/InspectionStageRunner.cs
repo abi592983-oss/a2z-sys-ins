@@ -14,12 +14,12 @@ namespace A2ZSysIns
         {
             var stage = new InspectionStageResult { Name = name, StartedAt = DateTime.Now, Status = "INDETERMINATE" };
             report.Stages.Add(stage); progress?.Report(stage);
-            var timer = Stopwatch.StartNew(); var before = report.Measurements.Count + report.DiagnosticLog.Count;
+            var timer = Stopwatch.StartNew(); var measurementStart = report.Measurements.Count; var evidenceStart = measurementStart + report.DiagnosticLog.Count;
             try
             {
                 cancellation.ThrowIfCancellationRequested();
                 await Task.Run(action, cancellation).ConfigureAwait(false);
-                stage.Status = HasLimitation(report, before) ? "WARNING" : "PASS";
+                stage.Status = HasLimitation(report, measurementStart) ? "WARNING" : "PASS";
                 stage.Reason = stage.Status == "PASS" ? "Stage completed." : "Stage completed with unavailable or limited evidence; see measurements and diagnostic log.";
             }
             catch (OperationCanceledException)
@@ -38,7 +38,7 @@ namespace A2ZSysIns
             finally
             {
                 timer.Stop(); stage.FinishedAt = DateTime.Now; stage.DurationMilliseconds = timer.ElapsedMilliseconds;
-                stage.EvidenceCount = Math.Max(0, report.Measurements.Count + report.DiagnosticLog.Count - before);
+                stage.EvidenceCount = Math.Max(0, report.Measurements.Count + report.DiagnosticLog.Count - evidenceStart);
                 progress?.Report(stage);
             }
             return stage;
@@ -69,7 +69,9 @@ namespace A2ZSysIns
         private static bool HasLimitation(InspectionReport report, int before)
         {
             return report.Measurements.Skip(Math.Min(before, report.Measurements.Count)).Any(x => x != null &&
-                (string.Equals(x.Status, "Unavailable", StringComparison.OrdinalIgnoreCase) || string.Equals(x.Status, "Failed", StringComparison.OrdinalIgnoreCase)));
+                (string.Equals(x.Status, "Unavailable", StringComparison.OrdinalIgnoreCase) || string.Equals(x.Status, "Failed", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(x.Status, "Attention", StringComparison.OrdinalIgnoreCase) || string.Equals(x.Status, "Critical", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(x.Status, "UNKNOWN", StringComparison.OrdinalIgnoreCase)));
         }
 
         private static bool IsAdministrator()
