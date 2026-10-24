@@ -57,7 +57,7 @@ namespace A2ZSysIns
         {
             var initialPawnIo = DriverAccessManager.DetectPawnIo(); EvidenceEngine.Log(_report, "Sensor access baseline", initialPawnIo.Detail);
             Collectors.CollectSensors(_report, x => Dispatcher.Invoke(() => ProgressText.Text = x));
-            var hasCpuTemperature = _report.Sensors.Any(x => EvidenceEngine.ActualTemperature(x) && ((x.Hardware ?? "").IndexOf("CPU", StringComparison.OrdinalIgnoreCase) >= 0 || (x.Name ?? "").StartsWith("CPU", StringComparison.OrdinalIgnoreCase) || x.Name == "Core Max" || x.Name == "Core Average"));
+            var hasCpuTemperature = _report.Sensors.Any(Scoring.IsCpuTemperature);
             if (!hasCpuTemperature && !initialPawnIo.Installed)
             {
                 string detail; Dispatcher.Invoke(() => ProgressText.Text = "CPU temperature unavailable; trying temporary PawnIO 2.2 fallback...");

@@ -358,13 +358,24 @@ namespace A2ZSysIns
                 JsonConvert.SerializeObject(new { DesignedCapacity = designed, FullChargeCapacity = full, WearPercent = r.BatteryWearPercent }));
         }
 
-        public static bool ActualTemperature(SensorRecord s) => s.Type == "Temperature" && s.Maximum.HasValue
-            && s.Name.IndexOf("Distance", StringComparison.OrdinalIgnoreCase) < 0
-            && s.Name.IndexOf("TjMax", StringComparison.OrdinalIgnoreCase) < 0;
+        public static bool ActualTemperature(SensorRecord s)
+        {
+            if (s == null || s.Type != "Temperature" || !s.Current.HasValue || !s.Maximum.HasValue) return false;
+            var name = s.Name ?? "";
+            // DIMM/NVMe threshold limits are metadata, not measured temperatures.
+            return s.Current.Value > -20 && s.Current.Value < 150
+                && name.IndexOf("Distance", StringComparison.OrdinalIgnoreCase) < 0
+                && name.IndexOf("TjMax", StringComparison.OrdinalIgnoreCase) < 0
+                && name.IndexOf("Limit", StringComparison.OrdinalIgnoreCase) < 0
+                && name.IndexOf("Threshold", StringComparison.OrdinalIgnoreCase) < 0
+                && name.IndexOf("Resolution", StringComparison.OrdinalIgnoreCase) < 0
+                && !name.StartsWith("Warning Temperature", StringComparison.OrdinalIgnoreCase)
+                && !name.StartsWith("Critical Temperature", StringComparison.OrdinalIgnoreCase);
+        }
         public static void FinishSensors(InspectionReport r)
         {
             Log(r, "LibreHardwareMonitor readings", JsonConvert.SerializeObject(r.Sensors));
-            var cpu = r.Sensors.Any(x => ActualTemperature(x) && (x.Name.StartsWith("CPU") || x.Name == "Core Max" || x.Name == "Core Average"));
+            var cpu = r.Sensors.Any(Scoring.IsCpuTemperature);
             // LHM memory readings provide a second source if native and WMI memory failed.
             if (!r.MemoryUsedPercent.HasValue)
                 r.MemoryUsedPercent = r.Sensors.FirstOrDefault(x => x.Hardware == "Total Memory" && x.Type == "Load")?.Current;

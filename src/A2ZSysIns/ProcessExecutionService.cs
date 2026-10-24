@@ -12,6 +12,7 @@ namespace A2ZSysIns
         public string FileName;
         public string Arguments;
         public string WorkingDirectory;
+        public Encoding OutputEncoding;
         public int TimeoutMilliseconds = 25000;
         public Action<string, string> Output;
         public Action<int> Started;
@@ -46,6 +47,11 @@ namespace A2ZSysIns
                     UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true,
                     CreateNoWindow = true, WorkingDirectory = string.IsNullOrWhiteSpace(request.WorkingDirectory) ? Environment.CurrentDirectory : request.WorkingDirectory
                 };
+                if (request.OutputEncoding != null)
+                {
+                    process.StartInfo.StandardOutputEncoding = request.OutputEncoding;
+                    process.StartInfo.StandardErrorEncoding = request.OutputEncoding;
+                }
                 DataReceivedEventHandler receiveOut = (sender, e) => Add("stdout", e.Data, stdout);
                 DataReceivedEventHandler receiveErr = (sender, e) => Add("stderr", e.Data, stderr);
                 void Add(string stream, string line, StringBuilder destination)
@@ -81,8 +87,16 @@ namespace A2ZSysIns
                         try { process.Kill(); } catch { }
                     }
                     if (!process.HasExited) process.WaitForExit(3000);
-                    if (process.HasExited) result.ExitCode = process.ExitCode;
-                    result.FinishedAt = DateTime.Now; result.StandardOutput = stdout.ToString(); result.StandardError = stderr.ToString();
+                    if (process.HasExited)
+                    {
+                        // WaitForExit() without a timeout also drains BeginOutputReadLine / BeginErrorReadLine.
+                        // HasExited alone can be true before the final SMART JSON or SFC verdict is delivered.
+                        process.WaitForExit();
+                        result.ExitCode = process.ExitCode;
+                    }
+                    result.FinishedAt = DateTime.Now;
+                    lock (stdout) result.StandardOutput = stdout.ToString();
+                    lock (stderr) result.StandardError = stderr.ToString();
                     process.OutputDataReceived -= receiveOut; process.ErrorDataReceived -= receiveErr;
                 }
             }

@@ -57,13 +57,14 @@ namespace A2ZSysIns
                 else if (result.Condition == "ATTENTION") Add(h, "Storage", "ATTENTION", name + " needs attention", "The drive reported a storage warning. " + life + ".", "Back up important data and have the drive reviewed.", result.ConditionConfidence, result.Reason);
                 else if (result.Condition == "UNKNOWN") Add(h, "Storage", "UNKNOWN", name + " health could not be verified", "The Inspector did not obtain enough validated health evidence to call this drive healthy.", "Do not treat missing SMART data as proof that the drive is healthy.", result.ConditionConfidence, result.Reason);
                 else if (d.RemainingLifePercent.HasValue && d.RemainingLifePercent.Value <= 20) Add(h, "Storage", "ATTENTION", name + " is nearing its endurance limit", "The drive reports approximately " + life + ". This describes endurance/wear, not a prediction of failure.", "Plan a replacement and keep current backups.", result.ConditionConfidence, result.Reason);
-                else Add(h, "Storage", "GOOD", name + " is operating normally", "No validated critical storage indicator was detected. " + life + ".", "", result.ConditionConfidence, result.Reason);
+                else if (result.ConditionConfidence != "High" || d.StorageEvidence.Quality != "Validated") Add(h, "Storage", "UNKNOWN", name + " has limited health evidence", "The available drive data contains no confirmed failure indicator, but a complete validated SMART condition was not collected. " + life + ".", "Collect full per-drive SMART evidence before calling the drive healthy.", result.ConditionConfidence, result.Reason);
+                else Add(h, "Storage", "GOOD", name + " has no flagged SMART indicators", "Validated SMART evidence contains no known critical storage indicator. This does not guarantee reliability. " + life + ".", "", result.ConditionConfidence, result.Reason);
             }
         }
 
         private static void AddThermals(CustomerHealthSummary h, InspectionReport r)
         {
-            var temps = r.Sensors.Where(EvidenceEngine.ActualTemperature).Select(x => x.Maximum ?? x.Current).Where(x => x.HasValue).Select(x => (double)x.Value).ToList();
+            var temps = r.Sensors.Where(Scoring.IsCpuTemperature).Select(x => x.Maximum ?? x.Current).Where(x => x.HasValue).Select(x => (double)x.Value).ToList();
             var peak = temps.Count == 0 ? (double?)null : temps.Max();
             if (r.CpuStressTest != null && r.CpuStressTest.MaximumTemperatureC.HasValue) peak = Math.Max(peak ?? 0, r.CpuStressTest.MaximumTemperatureC.Value);
             if (!peak.HasValue) { Add(h, "Temperature", "UNKNOWN", "Temperature could not be verified", "No validated CPU temperature evidence was available.", "", "Low", "Temperature not measured."); return; }
@@ -90,6 +91,7 @@ namespace A2ZSysIns
             if (m.Count == 0) { Add(h, "Windows", "NOT TESTED", "Windows file integrity was not tested", "The inspection did not run a Windows system-file integrity check.", "Run the Windows integrity check when a deeper software-health inspection is required.", "Low", "No Windows integrity measurement recorded."); return; }
             if (m.Any(x => x.Status == "Critical")) Add(h, "Windows", "CRITICAL", "Windows corruption needs repair", FirstReason(m, "Critical"), "Back up important data and repair Windows system components before relying on the PC.", "High", JoinReasons(m));
             else if (m.Any(x => x.Status == "Attention")) Add(h, "Windows", "ATTENTION", "Windows has file-system or system-file issues", FirstReason(m, "Attention"), "Run the recommended Windows repair/check and inspect the retained diagnostic details.", "High", JoinReasons(m));
+            else if (m.Any(x => x.Status == "Unavailable" || x.Status == "Failed" || x.Status == "UNKNOWN")) Add(h, "Windows", "UNKNOWN", "Windows integrity checks were incomplete", JoinReasons(m), "Review unavailable checks before calling Windows integrity healthy.", "Low", JoinReasons(m));
             else if (m.Any(x => x.Status == "Observed")) Add(h, "Windows", "GOOD", "Windows integrity checks found no reported corruption", FirstReason(m, "Observed"), "", "Moderate", JoinReasons(m));
             else Add(h, "Windows", "UNKNOWN", "Windows integrity could not be verified", JoinReasons(m), "Repeat the inspection with administrator access.", "Low", JoinReasons(m));
         }
@@ -98,7 +100,10 @@ namespace A2ZSysIns
         {
             if (r.Events.Count == 0) { Add(h, "Windows stability", "UNKNOWN", "Windows stability could not be fully assessed", "No monitored event history was returned.", "", "Low", "No event findings."); return; }
             if (r.Events.Any(x => x.Source == "Disk" && x.EventId == 7) || r.Events.Any(x => x.Source == "Microsoft-Windows-WHEA-Logger" && x.EventId == 18 && x.Count >= 2)) Add(h, "Windows stability", "CRITICAL", "Windows recorded a serious hardware-related event pattern", "Repeated high-risk hardware or storage events were found in the retained event history.", "Back up data and investigate the related hardware before relying on the PC.", "High", "Repeated high-risk event pattern detected.");
-            else if (r.Events.Any(x => x.EventId == 1001 || x.EventId == 55 || x.Source == "Microsoft-Windows-WHEA-Logger")) Add(h, "Windows stability", "ATTENTION", "Windows has recorded stability warnings", "One or more monitored Windows stability events require correlation.", "Review the event details and monitor whether the problem repeats.", "Moderate", string.Join("; ", r.Events.Take(6).Select(x => x.Source + "/" + x.EventId + " x" + x.Count)));
+            else if (r.Events.Any(x => x.EventId == 1001 || x.EventId == 55 || x.Source == "Microsoft-Windows-WHEA-Logger" ||
+                     (string.Equals(x.Source, "disk", StringComparison.OrdinalIgnoreCase) && x.EventId == 51) ||
+                     (x.Source == "Microsoft-Windows-Kernel-PnP" && x.EventId == 219 && x.Count >= 3) ||
+                     (x.EventId == 41 && x.Count >= 3) || (x.EventId == 6008 && x.Count >= 3))) Add(h, "Windows stability", "ATTENTION", "Windows has recorded stability warnings", "One or more monitored Windows stability events require correlation.", "Review the event details and monitor whether the problem repeats.", "Moderate", string.Join("; ", r.Events.Take(6).Select(x => x.Source + "/" + x.EventId + " x" + x.Count)));
             else Add(h, "Windows stability", "GOOD", "No high-risk Windows event pattern was detected", "The retained event history did not contain the monitored high-risk patterns.", "", "Moderate", "Monitored event patterns reviewed.");
         }
 

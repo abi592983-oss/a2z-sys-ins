@@ -163,7 +163,7 @@ namespace A2ZSysIns
         {
             foreach (var d in r.Drives)
             {
-                if (string.IsNullOrWhiteSpace(d.RawEvidence)) { EvidenceEngine.Record(r, d.DeviceId + " link speed", "smartctl JSON", "Unavailable", "No structured SMART JSON was retained for this drive."); continue; }
+                if (d.SmartDataSource != "smartctl JSON" || string.IsNullOrWhiteSpace(d.RawEvidence)) { EvidenceEngine.Record(r, d.DeviceId + " link speed", "smartctl JSON", "Unavailable", "No structured smartctl JSON was acquired. Concatenated WMI fallback records cannot provide a validated negotiated link speed."); continue; }
                 try
                 {
                     var j = JObject.Parse(d.RawEvidence); var current = (string)j.SelectToken("interface_speed.current.string"); var max = (string)j.SelectToken("interface_speed.max.string");
