@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -31,8 +32,12 @@ namespace A2ZSysIns
             try
             {
                 var result = await RunAsync(report, exe, args, timeoutMs, cancellation).ConfigureAwait(false);
-                var c = classifier(result.StandardOutput + "\n" + result.StandardError);
-                EvidenceEngine.Record(report, "Windows integrity / " + target, exe, c.Item1, c.Item2, Trim(result.StandardOutput + "\n" + result.StandardError));
+                var output = NormalizeOutput(result.StandardOutput + "\n" + result.StandardError);
+                var c = classifier(output);
+                if ((!result.ExitCode.HasValue || result.ExitCode.Value != 0) && c.Item1 == "Observed")
+                    c = Tuple.Create("Unavailable", "Process exited with code " + (result.ExitCode.HasValue ? result.ExitCode.Value.ToString() : "unknown") + "; a clean integrity result cannot be confirmed.");
+                EvidenceEngine.Record(report, "Windows integrity / " + target, exe, c.Item1,
+                    c.Item2 + " Process exit code: " + (result.ExitCode.HasValue ? result.ExitCode.Value.ToString() : "unknown") + ".", Trim(output));
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
@@ -41,8 +46,9 @@ namespace A2ZSysIns
             }
         }
 
-        private static Tuple<string, string> ClassifySfc(string text)
+        internal static Tuple<string, string> ClassifySfc(string text)
         {
+            text = NormalizeOutput(text);
             if (Contains(text, "did not find any integrity violations")) return Tuple.Create("Observed", "Windows system-file verification reported no integrity violations.");
             if (Contains(text, "found corrupt files") && Contains(text, "successfully repaired")) return Tuple.Create("Attention", "Windows reported corrupted protected system files and reported that some or all were repaired. The raw verification output is retained.");
             if (Contains(text, "found corrupt files") || Contains(text, "could not fix some")) return Tuple.Create("Critical", "Windows reported protected system-file corruption that was not fully repaired by verification.");
@@ -70,11 +76,13 @@ namespace A2ZSysIns
         {
             EvidenceEngine.Log(report, "Windows integrity request", exe + " " + args);
             var result = await ProcessExecutionService.RunAsync(new ProcessExecutionRequest { FileName = exe, Arguments = args, TimeoutMilliseconds = timeoutMs,
-                Output = (stream, line) => EvidenceEngine.Log(report, "Windows integrity " + stream, line) }, cancellation).ConfigureAwait(false);
+                OutputEncoding = string.Equals(exe, "sfc.exe", StringComparison.OrdinalIgnoreCase) ? Encoding.Unicode : null,
+                Output = (stream, line) => EvidenceEngine.Log(report, "Windows integrity " + stream, NormalizeOutput(line)) }, cancellation).ConfigureAwait(false);
             EvidenceEngine.Log(report, "Windows integrity response", exe + " exit=" + result.ExitCode);
             return result;
         }
 
+        internal static string NormalizeOutput(string text) => (text ?? "").Replace("\0", "");
         private static bool Contains(string text, string value) => (text ?? "").IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0;
         private static string Trim(string text) { var value = text ?? ""; return value.Length <= 12000 ? value : value.Substring(0, 12000) + "\n[output truncated]"; }
     }
