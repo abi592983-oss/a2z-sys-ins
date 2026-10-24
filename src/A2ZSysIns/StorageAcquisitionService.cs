@@ -137,7 +137,7 @@ namespace A2ZSysIns
                     if (!HasUsefulEvidence(json)) throw new InvalidOperationException("No usable SMART/health fields returned.");
 
                     var returnedSerial = ((string)json["serial_number"] ?? "").Trim();
-                    var serialValidated = string.IsNullOrWhiteSpace(drive.Serial) || string.IsNullOrWhiteSpace(returnedSerial);
+                    var serialValidated = false;
                     if (!string.IsNullOrWhiteSpace(drive.Serial) && !string.IsNullOrWhiteSpace(returnedSerial))
                     {
                         serialValidated = string.Equals(drive.Serial.Trim(), returnedSerial,
@@ -176,8 +176,7 @@ namespace A2ZSysIns
                    json["nvme_smart_health_information_log"] != null ||
                    json["scsi_grown_defect_list"] != null ||
                    json["scsi_error_counter_log"] != null ||
-                   json["temperature.current"] != null ||
-                   json["device"] != null;
+                   json["temperature.current"] != null;
         }
 
         private static string DetectDeviceType(JObject json, string scanType)
