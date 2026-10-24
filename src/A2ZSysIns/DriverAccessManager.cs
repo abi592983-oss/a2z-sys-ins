@@ -67,6 +67,13 @@ namespace A2ZSysIns
                     return true;
                 }
 
+                if (!_ownedPawnIo && (PawnIoServiceKeyPresent() || FindPawnIoOemInf().Count > 0))
+                {
+                    detail = "An existing PawnIO service or driver package was detected without Inspector ownership. The Inspector will not install over or remove it.";
+                    EvidenceEngine.Log(report, "PawnIO deployment blocked", detail);
+                    return false;
+                }
+
                 if (!SupportsPawnIo22())
                 {
                     detail = "PawnIO 2.2 temporary deployment is supported only on Windows 10 1809 or later. No driver was installed.";
@@ -186,14 +193,19 @@ namespace A2ZSysIns
                         EvidenceEngine.Log(report, "PawnIO DriverStore cleanup", inf + " Exit=" + code + " " + output);
                     }
 
+                    // Uninstallers can leave a loaded kernel service behind even when DriverStore
+                    // removal succeeded. SCM deletion is ownership-gated and may require reboot.
+                    if (PawnIoServiceKeyPresent()) PawnIoResidueCleaner.CleanupCurrentSessionServiceResidue();
+
                     var remainingNewInf = FindPawnIoOemInf().Except(_baselinePawnIoInf, StringComparer.OrdinalIgnoreCase).ToArray();
                     var registryPresent = DetectPawnIo().Installed;
                     var servicePresent = PawnIoServiceKeyPresent();
                     var clean = !registryPresent && !servicePresent && remainingNewInf.Length == 0;
                     var verification = "uninstallRegistry=" + registryPresent + "; serviceKey=" + servicePresent +
                         "; newDriverStoreInf=" + string.Join(",", remainingNewInf);
-                    PortableSessionLog.RecordCleanup("driver", "PawnIO-2.2.0", clean ? "VERIFIED" : "RESIDUE_DETECTED", verification);
-                    SessionRecoveryJournal.RecordCleanup("driver", "PawnIO-2.2.0", clean ? "VERIFIED" : "RESIDUE_DETECTED", verification);
+                    var cleanupStatus = clean ? "VERIFIED" : servicePresent && !registryPresent && remainingNewInf.Length == 0 ? "PENDING_OR_RESIDUE" : "RESIDUE_DETECTED";
+                    PortableSessionLog.RecordCleanup("driver", "PawnIO-2.2.0", cleanupStatus, verification);
+                    SessionRecoveryJournal.RecordCleanup("driver", "PawnIO-2.2.0", cleanupStatus, verification);
                     EvidenceEngine.Log(report, "PawnIO cleanup verification", (clean ? "VERIFIED: " : "RESIDUE DETECTED: ") + verification);
                     if (clean) _ownedPawnIo = false;
                 }
