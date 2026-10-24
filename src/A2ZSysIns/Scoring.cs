@@ -371,16 +371,24 @@ namespace A2ZSysIns
             return "SMART threshold=" + d.SmartStatus + "; reallocated=" + A("ATA_5") + "; pending=" + A("ATA_197") + "; uncorrectable=" + A("ATA_198") + "; interfaceCRC=" + A("ATA_199") + "; NVMe critical warning=" + A("NVMe_critical_warning") + "; NVMe media errors=" + A("NVMe_media_errors");
         }
 
-        private static bool IsCpuTemperature(SensorRecord s)
+        internal static bool IsCpuTemperature(SensorRecord s)
         {
             if (!EvidenceEngine.ActualTemperature(s)) return false;
             var hardware = s.Hardware ?? "";
             var name = s.Name ?? "";
-            return hardware.IndexOf("CPU", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                   name.StartsWith("CPU", StringComparison.OrdinalIgnoreCase) ||
-                   name.IndexOf("Core Max", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                   name.IndexOf("Core Average", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                   name.IndexOf("Package", StringComparison.OrdinalIgnoreCase) >= 0;
+            // Do not use every temperature sensor as a CPU sensor: RAM/NVMe limit
+            // readings must never trigger CPU overheating recommendations.
+            var cpuHardware = hardware.IndexOf("CPU", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                              hardware.IndexOf("Core i", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                              hardware.IndexOf("Ryzen", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                              hardware.IndexOf("Xeon", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                              hardware.IndexOf("EPYC", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                              hardware.IndexOf("Processor", StringComparison.OrdinalIgnoreCase) >= 0;
+            return name.StartsWith("CPU", StringComparison.OrdinalIgnoreCase) ||
+                   (cpuHardware && (name.IndexOf("Core", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                    name.IndexOf("Package", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                    name.IndexOf("Tctl", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                    name.IndexOf("Tdie", StringComparison.OrdinalIgnoreCase) >= 0));
         }
 
         private static bool IsCpuLoad(SensorRecord s)
