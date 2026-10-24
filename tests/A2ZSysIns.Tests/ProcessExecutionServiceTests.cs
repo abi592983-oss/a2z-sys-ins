@@ -25,6 +25,19 @@ namespace A2ZSysIns.Tests
         }
 
         [TestMethod]
+        public void CapturesTailOfFastExitingProcessBeforeReturning()
+        {
+            var result = ProcessExecutionService.RunAsync(new ProcessExecutionRequest
+            {
+                FileName = Cmd,
+                Arguments = "/c for /L %i in (1,1,300) do @echo LINE%i",
+                TimeoutMilliseconds = 5000
+            }, CancellationToken.None).GetAwaiter().GetResult();
+            Assert.AreEqual(0, result.ExitCode);
+            StringAssert.Contains(result.StandardOutput, "LINE300");
+        }
+
+        [TestMethod]
         public void Cancellation_TerminatesOnlyStartedChildProcess()
         {
             var started = new ManualResetEventSlim(false);
