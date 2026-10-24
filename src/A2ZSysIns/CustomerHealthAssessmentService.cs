@@ -63,7 +63,7 @@ namespace A2ZSysIns
 
         private static void AddThermals(CustomerHealthSummary h, InspectionReport r)
         {
-            var temps = r.Sensors.Where(EvidenceEngine.ActualTemperature).Select(x => x.Maximum ?? x.Current).Where(x => x.HasValue).Select(x => (double)x.Value).ToList();
+            var temps = r.Sensors.Where(Scoring.IsCpuTemperature).Select(x => x.Maximum ?? x.Current).Where(x => x.HasValue).Select(x => (double)x.Value).ToList();
             var peak = temps.Count == 0 ? (double?)null : temps.Max();
             if (r.CpuStressTest != null && r.CpuStressTest.MaximumTemperatureC.HasValue) peak = Math.Max(peak ?? 0, r.CpuStressTest.MaximumTemperatureC.Value);
             if (!peak.HasValue) { Add(h, "Temperature", "UNKNOWN", "Temperature could not be verified", "No validated CPU temperature evidence was available.", "", "Low", "Temperature not measured."); return; }
