@@ -2,7 +2,7 @@
 
 Created: 2026-11-05 (Sri Lanka)
 Target date: 2026-11-12 (provisional; UI-only milestone, subject to source inspection)
-Status: PARTIAL UI IMPLEMENTATION — UI source readback verified, Windows rendering and 95% similarity NOT verified
+Status: FULL-WINDOW UI SOURCE IMPLEMENTED IN DRAFT PR #12 — CI checks in progress; Windows screenshot and 95% similarity NOT verified
 
 ## Goal
 Recreate the approved A2Z System Inspector dark-blue UI reference with **at least 95% visual similarity** (target 98–100%), then verify the UI before testing backend behavior.
@@ -22,7 +22,8 @@ Image generated on 2026-11-05 in the project conversation: `a_dark_blue_black_mo
 - [ ] Upload actual approved PNG reference to repository.
 - [x] Inspect current UI file locations and styling; no backend changes or full-system tests.
 - [x] Initial UI XAML changes committed (partial, not visually approved).
-- [ ] Complete one-stage-at-a-time layout and screenshot comparison.
+- [x] Implement separate Job Details, Health Check and Results & Export full-window XAML screens and hide the tab headers.
+- [ ] Capture genuine Windows screenshots of each stage and compare against approved reference.
 - [ ] Compare UI screenshots to approved reference; achieve >=95% visual similarity.
 - [ ] Test UI layout, navigation, resizing and controls only.
 - [ ] After visual threshold passes, test button behavior and automation.
@@ -36,5 +37,12 @@ Image generated on 2026-11-05 in the project conversation: `a_dark_blue_black_mo
 - **2026-11-05:** Updated `src/A2ZSysIns/MainWindow.xaml` in commits `c106145` and `93f66de`: zero-width sidebar column, minimum size 840×600, hide customer/problem inputs, label technician ID, revised stage headings, expand report by collapsing graph row, enable report zoom 50–250%, rename JSON export for ERP. Read-back checks: {"sidebarColumnRemoved":true,"jobField":true,"techField":true,"customerHidden":true,"problemHidden":true,"reportZoom":true,"reportGraphRowCollapsed":true,"backendUntouched":true}. No Windows rendering or screenshot comparison available here; 95% visual similarity not achieved/verified. Existing tab navigation, extra controls, and auto-transition still need work. No backend tests run.
 
 - **2026-11-05:** Continued UI work: commit `876b852` requires nonblank job number and technician ID, and automatically switches to results after a successful inspection; commit `59474b2` changes global WPF text/list styles to dark colors. Source readback: {"jobRequired":true,"technicianIdRequired":true,"autoResults":true,"darkGlobalTextbox":true,"darkGlobalList":true}. CI audit: Windows build workflow triggers on `main`; Pass 8 workflow does not trigger on a normal main push. No confirmed CI outcome, Windows render, or measured screenshot similarity. No backend changes; code-behind change limited to UI flow and validation.
+
+
+- **2026-11-05:** Reference-image analysis: the approved image is a **three-column conceptual montage**, not a literal screen with all stages active simultaneously. Following the user's required workflow, each stage occupies the full app workspace, while retaining the montage's dark navy, electric blue accents, rounded cards, numbered top-stepper, progress ring and green/warning/critical summary.
+
+- **2026-11-05:** Draft PR [#12](https://github.com/abi592983-oss/a2z-sys-ins/pull/12) opened from `codex/ui-reference-redesign-20261105` into `main`; **not merged**. UI files: `MainWindow.xaml` (full-window screens, reference header, hidden sidebar/tab headers, Job Number + Technician ID, progress stage list, elapsed timer, evidence console, results/ERP export, report expander); `MainWindow.xaml.cs` (stepper state, checkpoint progress, rough ETA, auto-result transition, results binding, status colors); `DarkReportPreviewService.cs` (navy report theme). No collector/scoring/backend code changed. **Do not generate fake health scores**: current scoring model deliberately uses a nullable, generally unset `OverallScore`; UI shows N/A instead of inventing 87/100.
+
+- **2026-11-05 CI evidence:** Previous `main` commit `794ba701` [Windows build success](https://github.com/abi592983-oss/a2z-sys-ins/actions/runs/41975827360). Draft PR commit `61ee04b5`: [Windows build success](https://github.com/abi592983-oss/a2z-sys-ins/actions/runs/41977257376) and [Pass 8 validation success](https://github.com/abi592983-oss/a2z-sys-ins/actions/runs/41977257263). Later commits may need a fresh run; latest at this writing `beb79223` queued. This is CI build/test evidence **not** a rendered screenshot or 95–99% pixel similarity measurement. UI controls and sizing still require live Windows verification.
 
 Update this file at every meaningful implementation milestone with date, files changed, evidence, test results and remaining blockers. Do not claim success without verification.
