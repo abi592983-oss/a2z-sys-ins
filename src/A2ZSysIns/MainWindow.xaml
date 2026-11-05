@@ -110,8 +110,23 @@
    <Border Background="#10253A" BorderBrush="#2A4C6D" BorderThickness="1" CornerRadius="13" Padding="18,16" Margin="0,0,0,16">
     <StackPanel>
      <DockPanel Margin="0,0,0,13"><TextBlock Text="COMPONENT ASSESSMENT" FontSize="15" FontWeight="Bold" Foreground="#EAF4FE"/><TextBlock Text="Evidence-based results" HorizontalAlignment="Right" Foreground="#8AABC8" FontSize="12"/></DockPanel>
-     <ListView x:Name="ResultsSummaryList" MaxHeight="260" MinHeight="145" Background="#0B1B2C" Foreground="#EAF4FE" BorderBrush="#284865" BorderThickness="1" ScrollViewer.HorizontalScrollBarVisibility="Auto">
-      <ListView.View><GridView><GridViewColumn Header="COMPONENT" Width="240" DisplayMemberBinding="{Binding Category}"/><GridViewColumn Header="RESULT" Width="145" DisplayMemberBinding="{Binding Status}"/><GridViewColumn Header="DIAGNOSTIC EVIDENCE" Width="615" DisplayMemberBinding="{Binding Reason}"/></GridView></ListView.View>
+     <ListView x:Name="ResultsSummaryList" MaxHeight="280" MinHeight="150" Background="#0B1B2C" Foreground="#EAF4FE" BorderBrush="#284865" BorderThickness="1" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+      <ListView.ItemTemplate><DataTemplate>
+       <Border Padding="12,10" BorderBrush="#244563" BorderThickness="0,0,0,1">
+        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="195"/><ColumnDefinition Width="125"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+         <StackPanel Orientation="Horizontal" VerticalAlignment="Center"><TextBlock Text="◈" Foreground="#49B7FF" FontSize="16" Margin="0,0,11,0"/><TextBlock Text="{Binding Component}" FontWeight="SemiBold" FontSize="14" Foreground="#ECF4FF" TextWrapping="Wrap" VerticalAlignment="Center"/></StackPanel>
+         <Border x:Name="StatusPill" Grid.Column="1" Width="104" Background="#183B58" CornerRadius="13" HorizontalAlignment="Left" VerticalAlignment="Center" Padding="7,4"><TextBlock x:Name="StatusPillText" Text="{Binding Status}" TextAlignment="Center" Foreground="#C9E4FB" FontWeight="SemiBold" FontSize="12"/></Border>
+         <TextBlock Grid.Column="2" Text="{Binding Explanation}" TextWrapping="Wrap" Foreground="#BFD3E6" FontSize="12" VerticalAlignment="Center"/>
+        </Grid>
+       </Border>
+       <DataTemplate.Triggers>
+        <DataTrigger Binding="{Binding Status}" Value="GOOD"><Setter TargetName="StatusPill" Property="Background" Value="#144F31"/><Setter TargetName="StatusPillText" Property="Foreground" Value="#9EFFC5"/></DataTrigger>
+        <DataTrigger Binding="{Binding Status}" Value="PASS"><Setter TargetName="StatusPill" Property="Background" Value="#144F31"/><Setter TargetName="StatusPillText" Property="Foreground" Value="#9EFFC5"/></DataTrigger>
+        <DataTrigger Binding="{Binding Status}" Value="ATTENTION"><Setter TargetName="StatusPill" Property="Background" Value="#694B12"/><Setter TargetName="StatusPillText" Property="Foreground" Value="#FFE28C"/></DataTrigger>
+        <DataTrigger Binding="{Binding Status}" Value="DEGRADED"><Setter TargetName="StatusPill" Property="Background" Value="#694B12"/><Setter TargetName="StatusPillText" Property="Foreground" Value="#FFE28C"/></DataTrigger>
+        <DataTrigger Binding="{Binding Status}" Value="CRITICAL"><Setter TargetName="StatusPill" Property="Background" Value="#702637"/><Setter TargetName="StatusPillText" Property="Foreground" Value="#FFB6C1"/></DataTrigger>
+       </DataTemplate.Triggers>
+      </DataTemplate></ListView.ItemTemplate>
      </ListView>
     </StackPanel>
    </Border>
