@@ -1,0 +1,31 @@
+name: UI screenshot audit
+on:
+  pull_request:
+    paths:
+      - "src/A2ZSysIns/MainWindow.xaml"
+      - "src/A2ZSysIns/MainWindow.xaml.cs"
+      - "src/A2ZSysIns/DarkReportPreviewService.cs"
+      - "tools/Capture-InspectorUI.ps1"
+      - ".github/workflows/ui-screenshot.yml"
+  workflow_dispatch:
+jobs:
+  visual:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: NuGet/setup-nuget@v2
+      - name: Restore packages
+        run: nuget restore A2ZSysIns.sln
+      - uses: microsoft/setup-msbuild@v2
+      - name: Build WPF application
+        run: msbuild src/A2ZSysIns/A2ZSysIns.csproj /p:Configuration=Release /p:Platform=x64 /m
+      - name: Render all three stages at desktop and laptop sizes
+        shell: pwsh
+        run: '& "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -STA -ExecutionPolicy Bypass -File tools/Capture-InspectorUI.ps1'
+      - name: Upload visual audit artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Inspector-UI-Screenshots
+          path: ui-artifacts/**
+          if-no-files-found: warn
