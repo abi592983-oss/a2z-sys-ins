@@ -8,16 +8,16 @@ namespace A2ZSysIns
 {
     internal static class DarkReportPreviewService
     {
-        private static readonly Brush Text = new SolidColorBrush(Color.FromRgb(211, 226, 216));
-        private static readonly Brush Muted = new SolidColorBrush(Color.FromRgb(112, 132, 119));
-        private static readonly Brush Accent = new SolidColorBrush(Color.FromRgb(127, 198, 154));
-        private static readonly Brush Line = new SolidColorBrush(Color.FromRgb(25, 42, 31));
-        private static readonly Brush Surface = new SolidColorBrush(Color.FromRgb(2, 4, 2));
+        private static readonly Brush Text = new SolidColorBrush(Color.FromRgb(232, 241, 252));
+        private static readonly Brush Muted = new SolidColorBrush(Color.FromRgb(151, 178, 206));
+        private static readonly Brush Accent = new SolidColorBrush(Color.FromRgb(64, 181, 255));
+        private static readonly Brush Line = new SolidColorBrush(Color.FromRgb(39, 71, 103));
+        private static readonly Brush Surface = new SolidColorBrush(Color.FromRgb(16, 40, 62));
 
         public static FlowDocument Build(InspectionReport r)
         {
             EvidenceEngine.Log(r, "Dark report preview generated", "Customer-first health summary followed by technician evidence.");
-            var d = new FlowDocument { PagePadding = new Thickness(34), FontFamily = new FontFamily("Segoe UI"), FontSize = 10.5, Foreground = Text, Background = Brushes.Black, ColumnGap = 0, ColumnWidth = double.PositiveInfinity };
+            var d = new FlowDocument { PagePadding = new Thickness(34), FontFamily = new FontFamily("Segoe UI"), FontSize = 10.5, Foreground = Text, Background = new SolidColorBrush(Color.FromRgb(8, 23, 39)), ColumnGap = 0, ColumnWidth = double.PositiveInfinity };
             d.Blocks.Add(new Paragraph(new Run("A2Z SYSTEM INSPECTOR")) { FontSize = 23, FontWeight = FontWeights.Bold, Foreground = Accent, Margin = new Thickness(0, 0, 0, 2) });
             d.Blocks.Add(new Paragraph(new Run("Computer Health Inspection Report - customer summary + technician evidence")) { FontSize = 12, Foreground = Muted, Margin = new Thickness(0, 0, 0, 14) });
             AddKey(d, "Inspection", r.InspectionId); AddKey(d, "Customer / reference", r.CustomerReference); AddKey(d, "Technician", r.Technician);
