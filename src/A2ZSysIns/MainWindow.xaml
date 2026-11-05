@@ -30,33 +30,29 @@
  </Grid>
 </Border>
 <Grid Grid.Row="2"><Grid.ColumnDefinitions><ColumnDefinition Width="0"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-<TabControl x:Name="Tabs" Grid.Column="1" Margin="12" Background="Transparent" BorderThickness="0">
+<TabControl x:Name="Tabs" Grid.Column="1" Margin="0" Background="Transparent" BorderThickness="0" Style="{StaticResource FullPageTabs}" SelectionChanged="Tabs_SelectionChanged">
 <TabItem Header="JOB DETAILS">
  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-  <StackPanel MaxWidth="960" HorizontalAlignment="Center" Margin="24,14,24,30">
+  <StackPanel MaxWidth="960" HorizontalAlignment="Center" Margin="24,6,24,10">
    <TextBlock Text="Start a New Health Check" FontSize="30" FontWeight="Bold" HorizontalAlignment="Center" Foreground="#F0F7FF" Margin="0,0,0,9"/>
-   <TextBlock Text="Enter minimal information to start a complete system inspection." HorizontalAlignment="Center" Foreground="#9FB8D1" FontSize="14" Margin="0,0,0,26"/>
-   <Border CornerRadius="15" Background="#10253A" BorderBrush="#2A4B6C" BorderThickness="1" MaxWidth="740" HorizontalAlignment="Center" Padding="34,27,34,28">
+   <TextBlock Text="Enter minimal information to start a complete system inspection." HorizontalAlignment="Center" Foreground="#9FB8D1" FontSize="14" Margin="0,0,0,18"/>
+   <Border CornerRadius="15" Background="#10253A" BorderBrush="#2A4B6C" BorderThickness="1" MaxWidth="740" HorizontalAlignment="Center" Padding="30,18,30,18">
     <StackPanel Width="625">
      <DockPanel Margin="0,0,0,18"><Border Width="48" Height="48" Background="#0758AC" CornerRadius="9" Margin="0,0,17,0"><TextBlock Text="&#xE8D4;" FontFamily="Segoe MDL2 Assets" Foreground="#46C0FF" FontSize="28" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><StackPanel VerticalAlignment="Center"><TextBlock Text="Job Details" FontSize="23" FontWeight="Bold" Foreground="#F5F9FF"/><TextBlock Text="Only two fields are needed to start." Foreground="#AFC4DB" Margin="0,5,0,0"/></StackPanel></DockPanel>
-     <Border Background="#31516C" Height="1" Margin="0,0,0,22"/>
+     <Border Background="#31516C" Height="1" Margin="0,0,0,17"/>
      <TextBlock Text="Job Number *" FontSize="15" FontWeight="SemiBold" Foreground="#F3F7FC" Margin="0,0,0,8"/>
      <TextBox x:Name="JobBox" Height="51" FontSize="18" Padding="15,10" VerticalContentAlignment="Center" Margin="0,0,0,22" ToolTip="Required job number from your ERP or work order."/>
      <TextBlock Text="Technician ID *" FontSize="15" FontWeight="SemiBold" Foreground="#F3F7FC" Margin="0,0,0,8"/>
-     <TextBox x:Name="TechnicianBox" Height="51" FontSize="18" Padding="15,10" VerticalContentAlignment="Center" Margin="0,0,0,27" ToolTip="Required technician identifier."/>
+     <TextBox x:Name="TechnicianBox" Height="51" FontSize="18" Padding="15,10" VerticalContentAlignment="Center" Margin="0,0,0,18" ToolTip="Required technician identifier."/>
      <TextBox x:Name="CustomerBox" Visibility="Collapsed" IsTabStop="False"/>
      <TextBox x:Name="ProblemBox" Visibility="Collapsed" IsTabStop="False"/>
-     <Button x:Name="StartButton" Content="▶   START HEALTH CHECK" Click="Start_Click" Style="{StaticResource PrimaryButton}" Height="60" FontSize="18" HorizontalContentAlignment="Center" Margin="0" Padding="20,10"/>
+     <Button x:Name="StartButton" Content="▶   START HEALTH CHECK" Click="Start_Click" Style="{StaticResource PrimaryButton}" Height="55" FontSize="17" HorizontalContentAlignment="Center" Margin="0" Padding="20,10"/>
      <Expander Header="ADVANCED INSPECTION OPTIONS" IsExpanded="False" Foreground="#A2BDD8" Margin="0,21,0,0">
       <StackPanel Margin="4,12,4,0"><TextBlock Text="Mode" Foreground="#AFC4DB" Margin="0,0,0,7"/><ComboBox x:Name="ModeBox" SelectedIndex="0" Width="240" HorizontalAlignment="Left"><ComboBoxItem Content="AUTOMATIC"/><ComboBoxItem Content="FULL"/><ComboBoxItem Content="MANUAL"/></ComboBox><TextBlock Text="Automatic uses safe decisions; manual and full modes are optional." Foreground="#87A8C9" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0"/></StackPanel>
      </Expander>
     </StackPanel>
    </Border>
-   <UniformGrid Columns="3" Margin="0,22,0,0">
-    <Border Style="{StaticResource Card}" Margin="0,0,7,0"><StackPanel><TextBlock Text="HARDWARE" Foreground="#38B8FF" FontSize="11" FontWeight="Bold"/><TextBlock Text="CPU, RAM, storage and sensors" Foreground="#C4D9EE" Margin="0,8,0,0" TextWrapping="Wrap"/></StackPanel></Border>
-    <Border Style="{StaticResource Card}" Margin="4,0"><StackPanel><TextBlock Text="EVIDENCE" Foreground="#38B8FF" FontSize="11" FontWeight="Bold"/><TextBlock Text="Real measurements and limitations" Foreground="#C4D9EE" Margin="0,8,0,0" TextWrapping="Wrap"/></StackPanel></Border>
-    <Border Style="{StaticResource Card}" Margin="7,0,0,0"><StackPanel><TextBlock Text="ERP EXPORT" Foreground="#38B8FF" FontSize="11" FontWeight="Bold"/><TextBlock Text="Structured technician JSON" Foreground="#C4D9EE" Margin="0,8,0,0" TextWrapping="Wrap"/></StackPanel></Border>
-   </UniformGrid>
+   
   </StackPanel>
  </ScrollViewer>
 </TabItem>
