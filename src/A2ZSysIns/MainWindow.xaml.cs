@@ -1,6 +1,9 @@
 using System;
 using System.Diagnostics;
 using System.Linq;
+using System.Globalization;
+using System.Windows.Media;
+using System.Windows.Threading;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -14,14 +17,19 @@ namespace A2ZSysIns
         private CancellationTokenSource _stressCancellation;
         private CancellationTokenSource _inspectionCancellation;
         private int _lastGraphRenderMs = -1000;
+        private readonly Stopwatch _inspectionWatch = new Stopwatch();
+        private readonly DispatcherTimer _displayTimer = new DispatcherTimer();
+        private int _completedStages;
 
         public MainWindow()
         {
             InitializeComponent();
             var area = SystemParameters.WorkArea;
             MaxWidth = area.Width; MaxHeight = area.Height;
-            Width = Math.Min(1080, Math.Max(MinWidth, area.Width - 24));
-            Height = Math.Min(680, Math.Max(MinHeight, area.Height - 24));
+            Width = Math.Min(1440, Math.Max(MinWidth, area.Width - 24));
+            Height = Math.Min(860, Math.Max(MinHeight, area.Height - 24));
+            _displayTimer.Interval = TimeSpan.FromSeconds(1);
+            _displayTimer.Tick += (s, e) => UpdateElapsed();
         }
 
         private async void Start_Click(object sender, RoutedEventArgs e)
@@ -29,7 +37,7 @@ namespace A2ZSysIns
             if (string.IsNullOrWhiteSpace(JobBox.Text)) { MessageBox.Show(this, "Enter the job number before starting.", "A2Z System Inspector", MessageBoxButton.OK, MessageBoxImage.Information); return; }
             if (string.IsNullOrWhiteSpace(TechnicianBox.Text)) { MessageBox.Show(this, "Enter the technician ID before starting.", "A2Z System Inspector", MessageBoxButton.OK, MessageBoxImage.Information); return; }
             _report = new InspectionReport { InspectionId = DateTime.Now.ToString("yyyyMMdd-HHmmss"), StartedAt = DateTime.Now, CustomerReference = CustomerBox.Text.Trim(), JobNumber = JobBox.Text.Trim(), Technician = TechnicianBox.Text.Trim(), ReportedProblem = ProblemBox.Text.Trim(), InspectionMode = ((System.Windows.Controls.ComboBoxItem)ModeBox.SelectedItem).Content.ToString() };
-            _inspectionCancellation = new CancellationTokenSource(); EvidenceEngine.Begin(_report); Tabs.SelectedIndex = 1; StartButton.IsEnabled = false; CancelInspectionButton.IsEnabled = true;
+            _inspectionCancellation = new CancellationTokenSource(); EvidenceEngine.Begin(_report); _completedStages = 0; _inspectionWatch.Restart(); _displayTimer.Start(); SetInspectionProgress(0); UpdateElapsed(); Tabs.SelectedIndex = 1; StartButton.IsEnabled = false; CancelInspectionButton.IsEnabled = true;
             try
             {
                 await Stage("Preflight", () => InspectionStageRunner.Preflight(_report));
@@ -45,13 +53,80 @@ namespace A2ZSysIns
                 else if (_report.InspectionMode == "AUTOMATIC" && !_report.IsAdministrator) _report.Stages.Add(new InspectionStageResult { Name = "Windows integrity", Status = "SKIPPED", Reason = "Automatic mode: skipped because the Inspector is not elevated." });
                 else await Stage("Windows integrity", () => WindowsIntegrityService.CollectAsync(_report, _inspectionCancellation.Token).GetAwaiter().GetResult());
                 await Stage("Analysis", () => { Pass12NormalizationService.Apply(_report); StorageInterpretationService.Interpret(_report); StorageHealthAssessmentService.Record(_report); Scoring.Calculate(_report); SmartInterpretation.NormalizeReport(_report); AdvancedAssessment.Apply(_report); SmartInterpretation.RefreshSummary(_report); CustomerHealthAssessmentService.Apply(_report); });
-                _report.CompletedAt = DateTime.Now; _report.InspectionState = _report.Stages.Any(x => x.Status == "ERROR" || x.Status == "WARNING" || x.Status == "SKIPPED") ? "COMPLETE_WITH_LIMITATIONS" : "COMPLETE"; Progress.Value = 100; ProgressText.Text = "Inspection " + _report.InspectionState + "."; StatusText.Text = "Inspection " + _report.InspectionId + " " + _report.InspectionState;
+                _report.CompletedAt = DateTime.Now; _report.InspectionState = _report.Stages.Any(x => x.Status == "ERROR" || x.Status == "WARNING" || x.Status == "SKIPPED") ? "COMPLETE_WITH_LIMITATIONS" : "COMPLETE"; SetInspectionProgress(100); ProgressText.Text = "Inspection " + _report.InspectionState + "."; StatusText.Text = "Inspection " + _report.InspectionId + " " + _report.InspectionState;
                 EvidenceEngine.Log(_report, "Session completed", "Completed at " + _report.CompletedAt.ToString("o") + "; measurements=" + _report.Measurements.Count + "; findings=" + _report.Findings.Count);
-                OverallText.Text = "Assessment: " + _report.OverallStatus; InspectionIdText.Text = "Inspection " + _report.InspectionId; ResultsList.ItemsSource = _report.Scores; ReportViewer.Document = DarkReportPreviewService.Build(_report); Tabs.SelectedIndex = 2;
+                OverallText.Text = "COMPLETE"; InspectionIdText.Text = "Inspection " + _report.InspectionId; ResultsList.ItemsSource = _report.Stages; ResultsSummaryList.ItemsSource = _report.Scores;
+                var healthStatus = _report.CustomerHealth == null ? "INCOMPLETE" : _report.CustomerHealth.OverallStatus;
+                HealthStatusText.Text = healthStatus; ScoreText.Text = _report.OverallScore.HasValue ? _report.OverallScore.Value.ToString(CultureInfo.InvariantCulture) : "N/A";
+                UpdateHealthBanner(healthStatus);
+                TotalTimeText.Text = FormatDuration(_report.CompletedAt - _report.StartedAt);
+                ReportViewer.Document = DarkReportPreviewService.Build(_report); Tabs.SelectedIndex = 2;
             }
             catch (OperationCanceledException) { _report.CompletedAt = DateTime.Now; _report.InspectionState = "CANCELLED"; _report.Limitations.Add("Inspection cancelled by technician; collected evidence is partial."); EvidenceEngine.Log(_report, "Inspection cancelled", "Technician requested cancellation."); StatusText.Text = "Inspection CANCELLED"; }
             catch (Exception ex) { if (_report != null) { _report.InspectionState = "FAILED_FATAL"; EvidenceEngine.Log(_report, "Unhandled inspection error", ex.ToString()); } MessageBox.Show(this, "The inspection could not complete. Temporary Inspector-owned resources will be cleaned where applicable; see the retained diagnostic log.\n\n" + ex.GetBaseException().Message, "A2Z System Inspector", MessageBoxButton.OK, MessageBoxImage.Error); StatusText.Text = "Inspection FAILED_FATAL"; }
-            finally { if (_report != null) DriverAccessManager.CleanupOwnedPawnIo(_report, "inspection finished"); _inspectionCancellation.Dispose(); _inspectionCancellation = null; StartButton.IsEnabled = true; CancelInspectionButton.IsEnabled = false; }
+            finally { _displayTimer.Stop(); _inspectionWatch.Stop(); if (_report != null) DriverAccessManager.CleanupOwnedPawnIo(_report, "inspection finished"); _inspectionCancellation.Dispose(); _inspectionCancellation = null; StartButton.IsEnabled = true; CancelInspectionButton.IsEnabled = false; }
+        }
+
+
+        private static string FormatDuration(TimeSpan duration)
+        {
+            return string.Format(CultureInfo.InvariantCulture, "{0:00}:{1:00}", (int)duration.TotalMinutes, duration.Seconds);
+        }
+
+        private void UpdateElapsed()
+        {
+            ElapsedText.Text = "Elapsed: " + FormatDuration(_inspectionWatch.Elapsed);
+            if (_completedStages < 2 || _completedStages >= 9)
+                EstimatedText.Text = "Estimated remaining: measuring stages";
+            else
+            {
+                // A checkpoint-based estimate, not a claim about the active collector's progress.
+                var estimatedSeconds = _inspectionWatch.Elapsed.TotalSeconds * (9 - _completedStages) / _completedStages;
+                EstimatedText.Text = "Estimated remaining (rough): " + FormatDuration(TimeSpan.FromSeconds(estimatedSeconds));
+            }
+        }
+
+        private void SetInspectionProgress(double percent)
+        {
+            Progress.IsIndeterminate = false;
+            Progress.Value = percent;
+            ProgressPercentText.Text = Math.Round(percent).ToString(CultureInfo.InvariantCulture) + "%";
+            if (percent <= 0) { ProgressArc.Data = Geometry.Empty; return; }
+            var angle = Math.Min(percent, 99.99) * 2.0 * Math.PI / 100.0;
+            var x = 110 + 90 * Math.Sin(angle);
+            var y = 110 - 90 * Math.Cos(angle);
+            var sweep = angle > Math.PI ? 1 : 0;
+            var path = string.Format(CultureInfo.InvariantCulture, "M 110,20 A 90,90 0 {0},1 {1:0.###},{2:0.###}", sweep, x, y);
+            ProgressArc.Data = Geometry.Parse(path);
+        }
+
+        private void UpdateHealthBanner(string rawStatus)
+        {
+            var status = (rawStatus ?? "INCOMPLETE").ToUpperInvariant();
+            var good = status == "GOOD";
+            var critical = status == "CRITICAL";
+            var attention = status == "ATTENTION";
+            HealthSummaryBanner.Background = new SolidColorBrush(good ? Color.FromRgb(9, 61, 42) : critical ? Color.FromRgb(72, 21, 31) : attention ? Color.FromRgb(64, 46, 10) : Color.FromRgb(19, 42, 67));
+            HealthSummaryBanner.BorderBrush = new SolidColorBrush(good ? Color.FromRgb(39, 217, 106) : critical ? Color.FromRgb(246, 86, 103) : attention ? Color.FromRgb(245, 177, 48) : Color.FromRgb(65, 142, 216));
+            HealthIconBadge.Background = HealthSummaryBanner.BorderBrush;
+            HealthIconText.Text = good ? "✔" : "!";
+            HealthIconText.Foreground = Brushes.Black;
+            ScoreText.Foreground = HealthSummaryBanner.BorderBrush;
+        }
+
+        private void Tabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!ReferenceEquals(e.Source, Tabs) || StepBadge1 == null) return;
+            var index = Tabs.SelectedIndex;
+            SetStepVisual(StepBadge1, StepLabel1, index == 0);
+            SetStepVisual(StepBadge2, StepLabel2, index == 1);
+            SetStepVisual(StepBadge3, StepLabel3, index == 2);
+        }
+
+        private static void SetStepVisual(Border badge, TextBlock label, bool selected)
+        {
+            badge.Background = new SolidColorBrush(selected ? Color.FromRgb(8, 127, 247) : Color.FromRgb(16, 68, 111));
+            label.Foreground = selected ? Brushes.White : new SolidColorBrush(Color.FromRgb(166, 190, 214));
         }
 
         private void CollectSensorsWithPawnIoFallback()
@@ -75,6 +150,9 @@ namespace A2ZSysIns
             var progress = new Progress<InspectionStageResult>(s => { ProgressText.Text = s.Name + " — " + s.Status + ": " + s.Reason; StatusText.Text = s.Name + " " + s.Status; ResultsList.ItemsSource = null; ResultsList.ItemsSource = _report.Stages; });
             await InspectionStageRunner.RunAsync(_report, name, action, _inspectionCancellation.Token, progress);
             Progress.IsIndeterminate = false;
+            _completedStages++;
+            SetInspectionProgress(Math.Min(95, 100.0 * _completedStages / 9.0));
+            UpdateElapsed();
         }
 
         private void AppendConsole(string category, string message)
@@ -90,7 +168,7 @@ namespace A2ZSysIns
             LiveConsoleBox.ScrollToEnd();
         }
 
-        private void ViewReport_Click(object sender, RoutedEventArgs e) { if (Ready()) { ReportViewer.Document = DarkReportPreviewService.Build(_report); RenderStressGraphs(); Tabs.SelectedIndex = 2; } }
+        private void ViewReport_Click(object sender, RoutedEventArgs e) { if (Ready()) { ReportViewer.Document = DarkReportPreviewService.Build(_report); RenderStressGraphs(); Tabs.SelectedIndex = 2; ReportDetails.IsExpanded = true; } }
         private void ExportJson_Click(object sender, RoutedEventArgs e) { if (Ready()) ReportService.SaveJson(_report, this); }
         private void ExportText_Click(object sender, RoutedEventArgs e) { if (Ready()) ReportService.SaveText(_report, this); }
         private void ExportLog_Click(object sender, RoutedEventArgs e) { if (Ready()) ReportService.SaveDiagnosticLog(_report, this); }
@@ -135,7 +213,7 @@ namespace A2ZSysIns
         private void CancelInspection_Click(object sender, RoutedEventArgs e) { if (_inspectionCancellation == null) return; EvidenceEngine.Log(_report, "Inspection cancellation requested", "Technician pressed Cancel inspection."); AppendConsole("USER", "Cancellation requested"); CancelInspectionButton.IsEnabled = false; ProgressText.Text = "Cancellation requested — finishing current cancellation/cleanup..."; _inspectionCancellation.Cancel(); }
         private void Dashboard_Click(object sender, RoutedEventArgs e) { Tabs.SelectedIndex = 0; }
         private void InspectionNav_Click(object sender, RoutedEventArgs e) { Tabs.SelectedIndex = 1; }
-        private void New_Click(object sender, RoutedEventArgs e) { if (_stressCancellation != null) return; _report = null; ResultsList.ItemsSource = null; ReportViewer.Document = null; StressUtilizationGraph.Children.Clear(); StressThermalGraph.Children.Clear(); Progress.Value = 0; ProgressText.Text = "Ready"; Tabs.SelectedIndex = 0; StatusText.Text = "Ready"; }
+        private void New_Click(object sender, RoutedEventArgs e) { if (_stressCancellation != null) return; _report = null; ResultsList.ItemsSource = null; ReportViewer.Document = null; StressUtilizationGraph.Children.Clear(); StressThermalGraph.Children.Clear(); _displayTimer.Stop(); _inspectionWatch.Reset(); _completedStages = 0; SetInspectionProgress(0); ProgressText.Text = "Ready"; ResultsSummaryList.ItemsSource = null; ReportDetails.IsExpanded = false; HealthStatusText.Text = "ASSESSMENT PENDING"; ScoreText.Text = "N/A"; Tabs.SelectedIndex = 0; StatusText.Text = "Ready"; }
         private bool Ready() { if (_report != null) return true; MessageBox.Show(this, "Complete an inspection first."); return false; }
     }
 }
