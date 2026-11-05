@@ -106,7 +106,7 @@
    </Grid>
    <Border x:Name="HealthSummaryBanner" Background="#0B3D2A" BorderBrush="#27D96A" BorderThickness="2" CornerRadius="14" Padding="24,18" Margin="0,0,0,15">
     <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-     <Border Width="60" Height="60" Background="#31D981" CornerRadius="30" VerticalAlignment="Center" Margin="0,0,21,0"><TextBlock x:Name="HealthIconText" Text="✔" FontSize="34" Foreground="#004328" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold"/></Border>
+     <Border x:Name="HealthIconBadge" Width="60" Height="60" Background="#31D981" CornerRadius="30" VerticalAlignment="Center" Margin="0,0,21,0"><TextBlock x:Name="HealthIconText" Text="✔" FontSize="34" Foreground="#004328" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold"/></Border>
      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="SYSTEM HEALTH" Foreground="#D4F7E4" FontWeight="Bold" FontSize="13"/><TextBlock x:Name="HealthStatusText" Text="ASSESSMENT PENDING" FontWeight="Bold" Foreground="#E5FFF0" FontSize="30" Margin="0,5,0,0"/></StackPanel>
      <StackPanel Grid.Column="2" VerticalAlignment="Center"><TextBlock Text="HEALTH SCORE (IF AVAILABLE)" Foreground="#D4F7E4" HorizontalAlignment="Right" FontWeight="SemiBold"/><StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><TextBlock x:Name="ScoreText" Text="—" FontSize="36" FontWeight="Bold" Foreground="#56FC9B"/><TextBlock Text=" / 100" FontSize="16" Foreground="#D6F7E7" VerticalAlignment="Bottom" Margin="5,0,0,5"/></StackPanel></StackPanel>
     </Grid>
