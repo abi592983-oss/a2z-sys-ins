@@ -5,7 +5,7 @@
     <Style TargetType="Button"><Setter Property="Padding" Value="18,10"/><Setter Property="Margin" Value="4"/><Setter Property="Background" Value="{StaticResource Blue}"/><Setter Property="Foreground" Value="#091A2D"/><Setter Property="BorderThickness" Value="0"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Cursor" Value="Hand"/></Style>
     <Style TargetType="TextBox"><Setter Property="Margin" Value="0,4,12,8"/><Setter Property="Padding" Value="10"/><Setter Property="BorderBrush" Value="#245278"/><Setter Property="Background" Value="#061525"/><Setter Property="Foreground" Value="#EAF2FF"/></Style>
     <Style TargetType="TabItem"><Setter Property="Padding" Value="18,11"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Foreground" Value="#A9C6E3"/></Style>
-    <Style TargetType="ListViewItem"><Setter Property="Foreground" Value="#EAF2FF"/><Setter Property="Background" Value="White"/><Setter Property="Padding" Value="5"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/></Style>
-    <Style TargetType="GridViewColumnHeader"><Setter Property="Background" Value="#0E2944"/><Setter Property="Foreground" Value="#102A43"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Padding" Value="8"/></Style>
+    <Style TargetType="ListViewItem"><Setter Property="Foreground" Value="#EAF2FF"/><Setter Property="Background" Value="#0C2137"/><Setter Property="Padding" Value="5"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/></Style>
+    <Style TargetType="GridViewColumnHeader"><Setter Property="Background" Value="#0E2944"/><Setter Property="Foreground" Value="#C7DBF3"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Padding" Value="8"/></Style>
   </Application.Resources>
 </Application>
