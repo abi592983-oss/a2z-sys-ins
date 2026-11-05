@@ -82,12 +82,12 @@
       <ProgressBar x:Name="Progress" Minimum="0" Maximum="100" Value="0" Height="17" Foreground="#0C99FF" Background="#344B66" Margin="0,15,0,10"/>
       <TextBlock x:Name="ProgressText" Text="Ready to begin an inspection." Foreground="#C4D9EF" FontSize="13"/>
      </StackPanel>
-     <Expander Header="LIVE EVIDENCE CONSOLE" Foreground="#77C3FF" Margin="0,16,0,0" IsExpanded="True">
-      <TextBox x:Name="LiveConsoleBox" IsReadOnly="True" AcceptsReturn="True" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Height="120" Margin="0,8,0,0" Background="#071727" Foreground="#C9E0F5"/>
-     </Expander>
-     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,20,0,0">
+     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,15,0,0">
       <Button x:Name="CancelInspectionButton" Content="■   CANCEL HEALTH CHECK" Style="{StaticResource DangerButton}" Click="CancelInspection_Click" IsEnabled="False" Width="250" Height="49" FontSize="14" HorizontalContentAlignment="Center"/>
      </StackPanel>
+     <Expander Header="LIVE EVIDENCE CONSOLE" Foreground="#77C3FF" Margin="0,11,0,0" IsExpanded="True">
+      <TextBox x:Name="LiveConsoleBox" IsReadOnly="True" AcceptsReturn="True" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Height="120" Margin="0,8,0,0" Background="#071727" Foreground="#C9E0F5"/>
+     </Expander>
     </StackPanel>
    </Border>
   </StackPanel>
@@ -104,7 +104,7 @@
     <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
      <Border x:Name="HealthIconBadge" Width="60" Height="60" Background="#418ED8" CornerRadius="30" VerticalAlignment="Center" Margin="0,0,21,0"><TextBlock x:Name="HealthIconText" Text="i" FontSize="34" Foreground="#004328" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold"/></Border>
      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="SYSTEM HEALTH" Foreground="#D4F7E4" FontWeight="Bold" FontSize="13"/><TextBlock x:Name="HealthStatusText" Text="NOT YET INSPECTED" FontWeight="Bold" Foreground="#E5FFF0" FontSize="30" Margin="0,5,0,0"/></StackPanel>
-     <StackPanel Grid.Column="2" VerticalAlignment="Center"><TextBlock Text="HEALTH SCORE (IF AVAILABLE)" Foreground="#D4F7E4" HorizontalAlignment="Right" FontWeight="SemiBold"/><StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><TextBlock x:Name="ScoreText" Text="N/A" FontSize="36" FontWeight="Bold" Foreground="#56FC9B"/><TextBlock Text=" / 100" FontSize="16" Foreground="#D6F7E7" VerticalAlignment="Bottom" Margin="5,0,0,5"/></StackPanel></StackPanel>
+     <StackPanel Grid.Column="2" VerticalAlignment="Center"><TextBlock Text="HEALTH SCORE (IF AVAILABLE)" Foreground="#D4F7E4" HorizontalAlignment="Right" FontWeight="SemiBold"/><StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><TextBlock x:Name="ScoreText" Text="N/A" FontSize="36" FontWeight="Bold" Foreground="#9FC9F2"/><TextBlock Text=" / 100" FontSize="16" Foreground="#D6F7E7" VerticalAlignment="Bottom" Margin="5,0,0,5"/></StackPanel></StackPanel>
     </Grid>
    </Border>
    <Border Background="#10253A" BorderBrush="#2A4C6D" BorderThickness="1" CornerRadius="13" Padding="18,16" Margin="0,0,0,16">
