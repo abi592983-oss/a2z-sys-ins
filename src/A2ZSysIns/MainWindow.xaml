@@ -104,7 +104,7 @@
     <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
      <Border x:Name="HealthIconBadge" Width="60" Height="60" Background="#418ED8" CornerRadius="30" VerticalAlignment="Center" Margin="0,0,21,0"><TextBlock x:Name="HealthIconText" Text="i" FontSize="34" Foreground="#004328" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold"/></Border>
      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="SYSTEM HEALTH" Foreground="#D4F7E4" FontWeight="Bold" FontSize="13"/><TextBlock x:Name="HealthStatusText" Text="NOT YET INSPECTED" FontWeight="Bold" Foreground="#E5FFF0" FontSize="30" Margin="0,5,0,0"/></StackPanel>
-     <StackPanel Grid.Column="2" VerticalAlignment="Center"><TextBlock Text="HEALTH SCORE (IF AVAILABLE)" Foreground="#D4F7E4" HorizontalAlignment="Right" FontWeight="SemiBold"/><StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><TextBlock x:Name="ScoreText" Text="N/A" FontSize="36" FontWeight="Bold" Foreground="#9FC9F2"/><TextBlock Text=" / 100" FontSize="16" Foreground="#D6F7E7" VerticalAlignment="Bottom" Margin="5,0,0,5"/></StackPanel></StackPanel>
+     <StackPanel Grid.Column="2" VerticalAlignment="Center"><TextBlock Text="HEALTH SCORE (IF AVAILABLE)" Foreground="#D4F7E4" HorizontalAlignment="Right" FontWeight="SemiBold"/><StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><TextBlock x:Name="ScoreText" Text="N/A" FontSize="36" FontWeight="Bold" Foreground="#9FC9F2"/><TextBlock x:Name="ScoreDenominatorText" Text=" / 100" Visibility="Collapsed" FontSize="16" Foreground="#D6F7E7" VerticalAlignment="Bottom" Margin="5,0,0,5"/></StackPanel></StackPanel>
     </Grid>
    </Border>
    <Border Background="#10253A" BorderBrush="#2A4C6D" BorderThickness="1" CornerRadius="13" Padding="18,16" Margin="0,0,0,16">
@@ -132,7 +132,7 @@
    </Border>
    <WrapPanel HorizontalAlignment="Center" Margin="0,0,0,12">
     <Button Content="▤  VIEW REPORT" Click="ViewReport_Click" Width="185" Height="48" FontWeight="SemiBold" HorizontalContentAlignment="Center"/>
-    <Button Content="⇩  EXPORT TO ERP" Click="ExportJson_Click" Style="{StaticResource PrimaryButton}" Width="200" Height="48" FontWeight="SemiBold" HorizontalContentAlignment="Center"/>
+    <Button Content="⇩  EXPORT TO ERP" ToolTip="Save structured JSON for later import into BOS ERP. Direct upload is not implemented." Click="ExportJson_Click" Style="{StaticResource PrimaryButton}" Width="200" Height="48" FontWeight="SemiBold" HorizontalContentAlignment="Center"/>
     <Button Content="⟳  RUN AGAIN" Click="New_Click" Width="175" Height="48" FontWeight="SemiBold" HorizontalContentAlignment="Center"/>
    </WrapPanel>
    <Expander x:Name="ReportDetails" Header="FULL TECHNICAL REPORT — CLICK TO EXPAND" IsExpanded="False" Foreground="#9DD0FC" Margin="0,5,0,10">
