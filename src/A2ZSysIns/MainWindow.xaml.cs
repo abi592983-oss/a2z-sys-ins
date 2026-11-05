@@ -57,7 +57,7 @@ namespace A2ZSysIns
                 EvidenceEngine.Log(_report, "Session completed", "Completed at " + _report.CompletedAt.ToString("o") + "; measurements=" + _report.Measurements.Count + "; findings=" + _report.Findings.Count);
                 OverallText.Text = "COMPLETE"; InspectionIdText.Text = "Inspection " + _report.InspectionId; ResultsList.ItemsSource = _report.Stages; ResultsSummaryList.ItemsSource = _report.CustomerHealth == null ? null : _report.CustomerHealth.Components.Select(c => new { Component = c.Component, Status = c.Status, Explanation = c.Explanation }).ToList();
                 var healthStatus = _report.CustomerHealth == null ? "INCOMPLETE" : _report.CustomerHealth.OverallStatus;
-                HealthStatusText.Text = healthStatus; ScoreText.Text = _report.OverallScore.HasValue ? _report.OverallScore.Value.ToString(CultureInfo.InvariantCulture) : "N/A";
+                HealthStatusText.Text = healthStatus; ScoreText.Text = _report.OverallScore.HasValue ? _report.OverallScore.Value.ToString(CultureInfo.InvariantCulture) : "N/A"; ScoreDenominatorText.Visibility = _report.OverallScore.HasValue ? Visibility.Visible : Visibility.Collapsed;
                 UpdateHealthBanner(healthStatus);
                 TotalTimeText.Text = FormatDuration(_report.CompletedAt - _report.StartedAt);
                 ReportViewer.Document = DarkReportPreviewService.Build(_report); Tabs.SelectedIndex = 2;
@@ -213,7 +213,7 @@ namespace A2ZSysIns
         private void CancelInspection_Click(object sender, RoutedEventArgs e) { if (_inspectionCancellation == null) return; EvidenceEngine.Log(_report, "Inspection cancellation requested", "Technician pressed Cancel inspection."); AppendConsole("USER", "Cancellation requested"); CancelInspectionButton.IsEnabled = false; ProgressText.Text = "Cancellation requested — finishing current cancellation/cleanup..."; _inspectionCancellation.Cancel(); }
         private void Dashboard_Click(object sender, RoutedEventArgs e) { Tabs.SelectedIndex = 0; }
         private void InspectionNav_Click(object sender, RoutedEventArgs e) { Tabs.SelectedIndex = 1; }
-        private void New_Click(object sender, RoutedEventArgs e) { if (_stressCancellation != null) return; _report = null; ResultsList.ItemsSource = null; ReportViewer.Document = null; StressUtilizationGraph.Children.Clear(); StressThermalGraph.Children.Clear(); _displayTimer.Stop(); _inspectionWatch.Reset(); _completedStages = 0; SetInspectionProgress(0); ProgressText.Text = "Ready"; ResultsSummaryList.ItemsSource = null; ReportDetails.IsExpanded = false; HealthStatusText.Text = "ASSESSMENT PENDING"; ScoreText.Text = "N/A"; UpdateHealthBanner("INCOMPLETE"); Tabs.SelectedIndex = 0; StatusText.Text = "Ready"; }
+        private void New_Click(object sender, RoutedEventArgs e) { if (_stressCancellation != null) return; _report = null; ResultsList.ItemsSource = null; ReportViewer.Document = null; StressUtilizationGraph.Children.Clear(); StressThermalGraph.Children.Clear(); _displayTimer.Stop(); _inspectionWatch.Reset(); _completedStages = 0; SetInspectionProgress(0); ProgressText.Text = "Ready"; ResultsSummaryList.ItemsSource = null; ReportDetails.IsExpanded = false; HealthStatusText.Text = "ASSESSMENT PENDING"; ScoreText.Text = "N/A"; ScoreDenominatorText.Visibility = Visibility.Collapsed; UpdateHealthBanner("INCOMPLETE"); Tabs.SelectedIndex = 0; StatusText.Text = "Ready"; }
         private bool Ready() { if (_report != null) return true; MessageBox.Show(this, "Complete an inspection first."); return false; }
     }
 }
