@@ -147,7 +147,7 @@ namespace A2ZSysIns
         private async Task Stage(string name, Action action)
         {
             Progress.IsIndeterminate = true; ProgressText.Text = name + " is running (INDETERMINATE)..."; StatusText.Text = name + " is running"; AppendConsole(name.ToUpperInvariant(), "Started — progress indeterminate");
-            var progress = new Progress<InspectionStageResult>(s => { ProgressText.Text = s.Name + " — " + s.Status + ": " + s.Reason; StatusText.Text = s.Name + " " + s.Status; ResultsList.ItemsSource = null; ResultsList.ItemsSource = _report.Stages; });
+            var progress = new Progress<InspectionStageResult>(s => { ProgressText.Text = s.Name + " — " + s.Status + ": " + s.Reason; StatusText.Text = s.Name + " " + s.Status; AppendConsole(s.Name, s.Status + ": " + s.Reason); ResultsList.ItemsSource = null; ResultsList.ItemsSource = _report.Stages; });
             await InspectionStageRunner.RunAsync(_report, name, action, _inspectionCancellation.Token, progress);
             Progress.IsIndeterminate = false;
             _completedStages++;
@@ -213,7 +213,7 @@ namespace A2ZSysIns
         private void CancelInspection_Click(object sender, RoutedEventArgs e) { if (_inspectionCancellation == null) return; EvidenceEngine.Log(_report, "Inspection cancellation requested", "Technician pressed Cancel inspection."); AppendConsole("USER", "Cancellation requested"); CancelInspectionButton.IsEnabled = false; ProgressText.Text = "Cancellation requested — finishing current cancellation/cleanup..."; _inspectionCancellation.Cancel(); }
         private void Dashboard_Click(object sender, RoutedEventArgs e) { Tabs.SelectedIndex = 0; }
         private void InspectionNav_Click(object sender, RoutedEventArgs e) { Tabs.SelectedIndex = 1; }
-        private void New_Click(object sender, RoutedEventArgs e) { if (_stressCancellation != null) return; _report = null; ResultsList.ItemsSource = null; ReportViewer.Document = null; StressUtilizationGraph.Children.Clear(); StressThermalGraph.Children.Clear(); _displayTimer.Stop(); _inspectionWatch.Reset(); _completedStages = 0; SetInspectionProgress(0); ProgressText.Text = "Ready"; ResultsSummaryList.ItemsSource = null; ReportDetails.IsExpanded = false; HealthStatusText.Text = "ASSESSMENT PENDING"; ScoreText.Text = "N/A"; Tabs.SelectedIndex = 0; StatusText.Text = "Ready"; }
+        private void New_Click(object sender, RoutedEventArgs e) { if (_stressCancellation != null) return; _report = null; ResultsList.ItemsSource = null; ReportViewer.Document = null; StressUtilizationGraph.Children.Clear(); StressThermalGraph.Children.Clear(); _displayTimer.Stop(); _inspectionWatch.Reset(); _completedStages = 0; SetInspectionProgress(0); ProgressText.Text = "Ready"; ResultsSummaryList.ItemsSource = null; ReportDetails.IsExpanded = false; HealthStatusText.Text = "ASSESSMENT PENDING"; ScoreText.Text = "N/A"; UpdateHealthBanner("INCOMPLETE"); Tabs.SelectedIndex = 0; StatusText.Text = "Ready"; }
         private bool Ready() { if (_report != null) return true; MessageBox.Show(this, "Complete an inspection first."); return false; }
     }
 }
