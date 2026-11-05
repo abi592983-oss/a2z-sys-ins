@@ -2,7 +2,7 @@
 
 Created: 2026-11-05 (Sri Lanka)
 Target date: 2026-11-12 (provisional; UI-only milestone, subject to source inspection)
-Status: PARTIAL UI IMPLEMENTATION — 95% similarity NOT verified
+Status: PARTIAL UI IMPLEMENTATION — UI source readback verified, Windows rendering and 95% similarity NOT verified
 
 ## Goal
 Recreate the approved A2Z System Inspector dark-blue UI reference with **at least 95% visual similarity** (target 98–100%), then verify the UI before testing backend behavior.
@@ -34,5 +34,7 @@ Image generated on 2026-11-05 in the project conversation: `a_dark_blue_black_mo
 - **2026-11-05:** Created Google Drive folder and verified approved PNG is inside it. Inspected `src/A2ZSysIns/MainWindow.xaml` and `src/A2ZSysIns/App.xaml`: WPF UI; MainWindow has dark styling, navigation/tab styles and 1180×720 minimum; App.xaml has light global TextBox/ListView/Tab styles that could conflict. No UI edits or UI tests yet. Visual similarity unmeasured. Drive link is the canonical image reference until a binary copy can be committed.
 
 - **2026-11-05:** Updated `src/A2ZSysIns/MainWindow.xaml` in commits `c106145` and `93f66de`: zero-width sidebar column, minimum size 840×600, hide customer/problem inputs, label technician ID, revised stage headings, expand report by collapsing graph row, enable report zoom 50–250%, rename JSON export for ERP. Read-back checks: {"sidebarColumnRemoved":true,"jobField":true,"techField":true,"customerHidden":true,"problemHidden":true,"reportZoom":true,"reportGraphRowCollapsed":true,"backendUntouched":true}. No Windows rendering or screenshot comparison available here; 95% visual similarity not achieved/verified. Existing tab navigation, extra controls, and auto-transition still need work. No backend tests run.
+
+- **2026-11-05:** Continued UI work: commit `876b852` requires nonblank job number and technician ID, and automatically switches to results after a successful inspection; commit `59474b2` changes global WPF text/list styles to dark colors. Source readback: {"jobRequired":true,"technicianIdRequired":true,"autoResults":true,"darkGlobalTextbox":true,"darkGlobalList":true}. CI audit: Windows build workflow triggers on `main`; Pass 8 workflow does not trigger on a normal main push. No confirmed CI outcome, Windows render, or measured screenshot similarity. No backend changes; code-behind change limited to UI flow and validation.
 
 Update this file at every meaningful implementation milestone with date, files changed, evidence, test results and remaining blockers. Do not claim success without verification.
